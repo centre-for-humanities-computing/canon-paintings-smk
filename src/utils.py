@@ -15,6 +15,9 @@ import matplotlib.pyplot as plt
 from sklearn.neighbors import NearestNeighbors
 from sklearn.decomposition import PCA
 from matplotlib.patches import Patch
+from scipy.cluster.hierarchy import linkage, dendrogram
+from matplotlib.patches import Patch
+from sklearn.metrics.pairwise import cosine_distances
 
 def find_neighbors(feature_list, target_image):
     # initialize K-nearest neighbors algorithm
@@ -461,3 +464,128 @@ def generate_xticks(df):
     xticks_label = sig_year[yr_switches]
 
     return xticks_idx, xticks_label
+
+def pca_binary(ax, df, embedding, canon_category, title):
+    embeddings_array = np.array(df[embedding].to_list(), dtype=np.float32)
+    
+    color_mapping = {'other': '#129525', 'canon': '#75BCC6'}
+
+    # to 2 dimensions
+    pca = PCA(n_components=2)
+    pca_results = pca.fit_transform(embeddings_array)
+    df_pca = pd.DataFrame(pca_results, columns=["PCA1", "PCA2"])
+    df_pca["canon"] = df[canon_category].values
+
+    # Plot each category
+    for category in df_pca["canon"].unique():
+        subset = df_pca[df_pca["canon"] == category]
+
+        #marker = markers_dict.get(category) 
+        #alpha = alpha_dict.get(category)
+        
+        ax.scatter(
+            subset["PCA1"],
+            subset["PCA2"],
+            color=color_mapping.get(category),
+            label=category,
+            alpha=0.4,
+            edgecolor='black',
+            s=110,
+            marker='o' #marker
+        )
+
+    ax.set_title(title)
+    ax.set_xlabel("PCA1")
+    ax.set_ylabel("PCA2")
+
+    legend_handles = [Patch(facecolor=color, label=label) for label, color in color_mapping.items()]
+    ax.legend(handles=legend_handles, loc='upper right')
+
+    ax.axis("equal")
+
+    # supress warnings 
+
+    np.seterr(divide='ignore', invalid='ignore')
+
+# also create plot to handle canon variables as continuous scales (i.e., they are colored differently)
+def plot_pca_scale(ax, df, embeddings_column, color_by, title, cmap):
+    
+    # Handle embeddings
+    embeddings_array = np.array(df[embeddings_column].to_list(), dtype=np.float32)
+    
+    # to 2 dimensions
+    pca = PCA(n_components=2)
+    pca_results = pca.fit_transform(embeddings_array)
+    
+    df_pca = pd.DataFrame(pca_results, columns=["PCA1", "PCA2"])
+    
+    # Add metadata
+    df_pca["canon"] = df[color_by].values
+
+    # Plot each category
+    scatterplot = ax.scatter(df_pca["PCA1"], df_pca["PCA2"], c=df_pca["canon"], marker='o', cmap=cmap, alpha = 0.4)
+    ax.set_title(title)
+    ax.set_xlabel("PCA1")
+    ax.set_ylabel("PCA2")
+    ax.axis("equal")
+
+    return scatterplot
+
+def plot_dendrogram(df, col_to_color, col_to_label, embedding_col, l, h, palette='Set2'):
+    
+    df[col_to_color] = df[col_to_color].replace({0: 'other', 1: 'canon'})
+
+    unique_categories = df[col_to_color].unique()
+
+    # colors
+    cat_map = dict(zip(df[col_to_label],df[col_to_color]))
+    color_dict = {'other': '#129525', 'canon': '#356177'}#'#FCCA46'}
+
+    # prepare data for plotting
+    embeddings_matrix = np.stack(df[embedding_col].values)
+    cosine_dist_matrix = cosine_distances(embeddings_matrix)
+    
+    if cosine_dist_matrix.shape[0] != cosine_dist_matrix.shape[1]:
+        raise ValueError("Distance matrix is not square.")
+
+    Z = linkage(cosine_dist_matrix, method='ward')
+
+    # dendrogram plot
+    sns.set_style('whitegrid')
+    plt.figure(figsize=(l, h))
+    dend = dendrogram(Z, labels=df[col_to_label].values, orientation='top', leaf_font_size=5, color_threshold=0, above_threshold_color='black')
+
+    # Labels
+    # get x-tick labels
+    ax = plt.gca()
+    xticklabels = ax.get_xticklabels()
+
+    # apply colors labels
+    used_colors = {}
+    for tick in xticklabels:
+        label = tick.get_text()
+        # just to make sure we have no other labels in there
+        if label in cat_map:
+            value = cat_map[label]
+            color = color_dict[value]
+            tick.set_color(color)
+            used_colors[value] = color
+        else:
+            tick.set_color('black')
+    
+    # update labels in used_colors, make titlecase
+    used_colors = {k.replace('_', ' ').title(): v for k, v in used_colors.items()}
+    # make "other" if O in used_colors
+    if 'O' in used_colors:
+        used_colors['Other'] = used_colors.pop('O')
+    
+    # layout
+    plt.xlabel("Cosine Distance")
+
+    legend_handles = [Patch(facecolor=color, label=label) for label, color in used_colors.items()]
+    ax.legend(handles=legend_handles, loc='upper right')
+
+    plt.ylabel("Distance")
+    plt.tight_layout()
+    plt.show()
+
