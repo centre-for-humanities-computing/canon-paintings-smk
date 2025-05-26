@@ -18,6 +18,7 @@ from matplotlib.patches import Patch
 from scipy.cluster.hierarchy import linkage, dendrogram
 from matplotlib.patches import Patch
 from sklearn.metrics.pairwise import cosine_distances
+import seaborn as sns
 
 def find_neighbors(feature_list, target_image):
     # initialize K-nearest neighbors algorithm
@@ -533,6 +534,8 @@ def plot_pca_scale(ax, df, embeddings_column, color_by, title, cmap):
 
 def plot_dendrogram(df, col_to_color, col_to_label, embedding_col, l, h, palette='Set2'):
     
+    import seaborn as sns
+
     df[col_to_color] = df[col_to_color].replace({0: 'other', 1: 'canon'})
 
     unique_categories = df[col_to_color].unique()
@@ -583,9 +586,11 @@ def plot_dendrogram(df, col_to_color, col_to_label, embedding_col, l, h, palette
     plt.xlabel("Cosine Distance")
 
     legend_handles = [Patch(facecolor=color, label=label) for label, color in used_colors.items()]
-    ax.legend(handles=legend_handles, loc='upper right')
+    ax.legend(handles=legend_handles, loc='upper right', size = 10)
 
     plt.ylabel("Distance")
     plt.tight_layout()
     plt.show()
+
+
 
