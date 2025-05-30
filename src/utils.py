@@ -43,6 +43,7 @@ def find_neighbors(feature_list, target_image):
                         "distance_score" : pd.Series(dist),
                         'index': pd.Series(idxs)})
     
+    print(data['index'])
     
     # return filenames as a pandas series to be used in the plotting function
     return data
