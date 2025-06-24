@@ -24,3 +24,4 @@ typing_extensions==4.13.2
 opencv-python-headless
 huggingface_hub
 seaborn
+imblearn
