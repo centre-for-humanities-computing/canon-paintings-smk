@@ -15,7 +15,7 @@ import matplotlib.pyplot as plt
 from sklearn.neighbors import NearestNeighbors
 import re
 import sys
-sys.path.append(os.path.abspath(".."))
+#sys.path.append(os.path.abspath(".."))
 #from src.utils import plot_neighbors, pca_binary, plot_pca_scale, plot_dendrogram
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.decomposition import PCA
@@ -33,11 +33,12 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report
 from sklearn.model_selection import cross_validate, cross_val_score
 from imblearn.under_sampling import RandomUnderSampler
-from imblearn.combine import SMOTEENN
 from collections import Counter
 from imblearn.pipeline import Pipeline, make_pipeline
 from sklearn.linear_model import LogisticRegression
 from beautifultable import BeautifulTable
+from matplotlib.offsetbox import OffsetImage, AnnotationBbox
+from umap import UMAP
 
 #sys.path.append(os.path.abspath(".."))
 from utils import WindowedRollingDistance
@@ -54,6 +55,7 @@ def pca_binary(ax, df, embedding, canon_category, title):
     embeddings_array = np.array(df[embedding].to_list(), dtype=np.float32)
     
     color_mapping = {'other': '#129525', 'canon': '#75BCC6'}
+    label_mapping = {'other': 'Non-canon', 'canon': 'Canon'}
 
     # to 2 dimensions
     pca = PCA(n_components=2)
@@ -72,7 +74,7 @@ def pca_binary(ax, df, embedding, canon_category, title):
             subset["PCA1"],
             subset["PCA2"],
             color=color_mapping.get(category),
-            label=category,
+            label=label_mapping.get(category),
             alpha=0.4,
             edgecolor='black',
             s=110,
@@ -83,7 +85,7 @@ def pca_binary(ax, df, embedding, canon_category, title):
     ax.set_xlabel("PCA1")
     ax.set_ylabel("PCA2")
 
-    legend_handles = [Patch(facecolor=color, label=label) for label, color in color_mapping.items()]
+    legend_handles = [Patch(facecolor=color_mapping[key], label=label_mapping[key]) for key in color_mapping]
     ax.legend(handles=legend_handles, loc='upper right')
 
     ax.axis("equal")
@@ -264,17 +266,21 @@ def plot_diachronic_change(w_size, df, canon_col, embedding_col, cosim_to_plot, 
 
     col_or_grey = 'colored' if embedding_col == 'embedding' else 'greyscaled'
 
+    title_mapping = {'exb_canon': 'Exhibitions canon',
+                     'smk_exhibitions': 'SMK exhibitions',
+                     'on_display': 'On display canon'}
+
     ylabel = 'Mean Cosine Similarity'
 
     if cosim_to_plot == 'CANON_NONCANON_COSIM':
-        ax.set_title(f'{canon_col} vs non-canon, {col_or_grey}, small. grp. = {min_group_size}')
+        ax.set_title(f'{title_mapping[canon_col]} vs non-canon, {col_or_grey}, $r$ = {round(corr, 2)}, p{greater_dir}0.1')
         ylabel = 'Cosine Similarity'
 
     elif cosim_to_plot == 'TOTAL_COSIM_MEAN':
-        ax.set_title(f'Total data, {col_or_grey}, small. grp. = {min_group_size}')
+        ax.set_title(f'Total data, {col_or_grey}, $r$ = {round(corr, 2)}, p{greater_dir}0.1')
 
     else:
-        ax.set_title(f'{canon_col}, {col_or_grey}, small. grp. = {min_group_size}')
+        ax.set_title(f'{title_mapping[canon_col]}, {col_or_grey}, $r$ = {round(corr, 2)}, p{greater_dir}0.1')
 
     # create plot
     ax.set_xlabel(year_col)
@@ -285,27 +291,37 @@ def plot_diachronic_change(w_size, df, canon_col, embedding_col, cosim_to_plot, 
     #props = dict(boxstyle='round', facecolor='wheat', alpha=0.5)
 
     # place a text box in upper right in axes coords
-    ax.text(0.5, 0.95, f"r = {round(corr, 2)}, p{greater_dir}0.1", transform=ax.transAxes, fontsize=10,
-        verticalalignment='top')
+    #ax.text(0.5, 0.95, f"r = {round(corr, 2)}, p{greater_dir}0.1", transform=ax.transAxes, fontsize=10,
+        #verticalalignment='top')
     
 def create_stacked_freqplot(df, ax, canon_col, w_size, year_col = 'start_year'):
 
+    # change label names for plotting purposes
+    column_mapping = {'canon': 'Canon', 'other': 'Non-canon'}
+
+    # add title mapping for plotting purposes
+    title_mapping = {'exb_canon': 'Exhibitions canon',
+                    'smk_exhibitions': 'SMK exhibitions',
+                    'on_display': 'On display canon'}
+
     groupobject = df.groupby([year_col, canon_col]).size().unstack()
+    groupobject = groupobject.rename(columns=column_mapping)
+    
     groupobject.plot(kind='bar', stacked=True, ax=ax)
 
     N = w_size
     ax.set_xticks(range(0, len(groupobject), N))
     ax.set_xticklabels(groupobject.index[::N])
 
-    ax.set_title(f'{canon_col} frequency')
+    ax.set_title(f'{title_mapping[canon_col]} frequency')
     ax.set_xlabel(year_col)   
     ax.set_ylabel('Number of paintings')
 
-    #ax.legend(title='Canon status', loc='upper right')
+    ax.legend(title='Canon status', loc='upper right')
 
 def plot_grid(df, color_subset, canon_cols, w_size, cosim_to_plot, title, savefig, filename):
 
-    fig, axs = plt.subplots(3, len(canon_cols), figsize=(len(canon_cols)*6, 15))
+    fig, axs = plt.subplots(2, len(canon_cols), figsize=(len(canon_cols)*7, 10))
 
     for idx, col in enumerate(canon_cols):
 
@@ -323,10 +339,10 @@ def plot_grid(df, color_subset, canon_cols, w_size, cosim_to_plot, title, savefi
                             cosim_to_plot = cosim_to_plot, 
                             ax = axs[1, idx])
 
-        create_stacked_freqplot(df=df, w_size = 30, ax = axs[2, idx], canon_col=col)
+        #create_stacked_freqplot(df=df, w_size = 30, ax = axs[2, idx], canon_col=col)
 
 
-    fig.suptitle(f'{title}, w_size = {w_size}', size = 20, y=0.95)
+    #fig.suptitle(f'{title}, w_size = {w_size}', size = 20, y=0.95)
 
     if savefig==True:
         plt.savefig(filename, format='png', dpi=1200)
@@ -631,3 +647,67 @@ def print_classification_results(canon_cols, models, sampling_methods, df, embed
                 file.write(str(table))
         
 
+def pca_icons(ax, df, ds, embedding, image_col, out_folder, filename):
+    embeddings_array = np.array(df[embedding].to_list(), dtype=np.float32)
+
+    # to 2 dimensions
+    pca = PCA(n_components=2)
+    pca_results = pca.fit_transform(embeddings_array)
+    df_pca = pd.DataFrame(pca_results, columns=["PCA1", "PCA2"])
+    
+    ax.scatter(df_pca["PCA1"], df_pca["PCA2"], color='white')
+
+    ax.set_xlabel("PCA1")
+    ax.set_ylabel("PCA2")
+
+    ax.axis("equal")
+    ax.set_axis_off()
+
+    if image_col == 'grey_image':
+        def getImage(img):
+            return OffsetImage(np.array(img), zoom=.02, cmap='gray') # need to change color map if plotting greyscale; matplotlib defaults 1-channel images to different cmap otherwise..
+    
+    else:
+        def getImage(img):
+            return OffsetImage(np.array(img), zoom=.02)
+
+    for index, row in df_pca.iterrows():
+        # add images to plot
+        ab = AnnotationBbox(getImage(ds[index][image_col]), (row["PCA1"], row["PCA2"]), frameon=False)
+        ax.add_artist(ab)
+
+    plt.savefig(os.path.join(out_folder, filename), format='eps', dpi=1200)
+
+    np.seterr(divide='ignore', invalid='ignore')
+
+def umap_plot(ax, df, ds, embedding, filename, n_components=50):
+
+    def getImage(img):
+        return OffsetImage(np.array(img), zoom=.02)
+
+    embeddings_array = np.array(df[embedding].to_list(), dtype=np.float32)
+
+    # reduce dimensionality
+    pca = PCA(n_components=n_components)
+    pca_results = pca.fit_transform(embeddings_array)
+
+    X = np.array(pca_results)
+    umap_fitted = UMAP(n_components=2, random_state=42).fit_transform(X)
+    df_umap = pd.DataFrame(umap_fitted, columns=["umap1", "umap2"])
+    
+    ax.scatter(df_umap['umap1'], df_umap['umap2'], color='white')
+
+    ax.set_xlabel("")
+    ax.set_ylabel("")
+
+    ax.axis("equal")
+    ax.set_axis_off()
+
+    for index, row in df_umap.iterrows():
+        # add images to plot
+        ab = AnnotationBbox(getImage(ds[index]['image']), (row["umap1"], row["umap2"]), frameon=False)
+        ax.add_artist(ab)
+
+    plt.savefig(os.path.join('figs', filename), format='eps', dpi=1200)
+
+    np.seterr(divide='ignore', invalid='ignore')
