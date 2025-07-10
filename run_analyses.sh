@@ -9,4 +9,4 @@ source ./env/bin/activate
 # don't run classification
 #python3 src/run_analyses.py --df_name df_filtered_nationalities.pkl --plot --no-classification --results_suffix TESTER
 
-python3 src/paper_plots.py --df_name df_new_prod_years.pkl --ds_name smk_only_paintings_NEW_DATES
+python3 -m src.paper_plots --df_name df_new_prod_years.pkl --ds_name smk_only_paintings_NEW_DATES

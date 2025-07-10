@@ -41,17 +41,35 @@ from matplotlib.offsetbox import OffsetImage, AnnotationBbox
 from umap import UMAP
 
 #sys.path.append(os.path.abspath(".."))
-from utils import WindowedRollingDistance
-from utils import calc_vector_histogram
+from .utils import WindowedRollingDistance
+from .utils import calc_vector_histogram
 from scipy.ndimage import gaussian_filter1d
 
 # we get a lot of annoying warnings from sklearn so we suppress them
 import warnings
 warnings.filterwarnings('ignore')
 
+# default params
+plt.rcParams.update({
+    'figure.dpi': 300,
+    'savefig.dpi': 300,
+    'font.size': 14,
+    'axes.titlesize': 15,
+    'axes.labelsize': 14,
+    'xtick.labelsize': 12,
+    'ytick.labelsize': 12,
+    'legend.fontsize': 12,
+    'axes.linewidth': 1,
+    'lines.linewidth': 2,
+    'lines.markersize': 6,
+    'font.family': 'sans-serif',
+    'font.sans-serif': ['Arial']
+})
+
 ##################### PCA ##################################
 
 def pca_binary(ax, df, embedding, canon_category, title):
+    
     embeddings_array = np.array(df[embedding].to_list(), dtype=np.float32)
     
     color_mapping = {'other': '#129525', 'canon': '#75BCC6'}
@@ -75,18 +93,26 @@ def pca_binary(ax, df, embedding, canon_category, title):
             subset["PCA2"],
             color=color_mapping.get(category),
             label=label_mapping.get(category),
-            alpha=0.4,
+            alpha=0.6,
             edgecolor='black',
             s=110,
             marker='o' #marker
         )
 
-    ax.set_title(title)
-    ax.set_xlabel("PCA1")
-    ax.set_ylabel("PCA2")
+    #for spine in ax.spines.values():
+        #spine.set_linewidth(1.5)
+
+    #for spine in ax.spines.values():
+        #spine.set_visible(False)
+
+    ax.set_title(title, fontsize=10)
+    ax.set_xlabel("PCA1", fontsize=8)
+    ax.set_ylabel("PCA2", fontsize=8)
+    ax.tick_params(axis='both', labelsize=7)
+    ax.grid(True, linestyle='--', alpha=0.2)
 
     legend_handles = [Patch(facecolor=color_mapping[key], label=label_mapping[key]) for key in color_mapping]
-    ax.legend(handles=legend_handles, loc='upper right')
+    ax.legend(handles=legend_handles, loc='upper right', fontsize=8)
 
     ax.axis("equal")
 
@@ -224,9 +250,7 @@ def run_change_analysis(w_size, df, canon_col, embedding_col, step_size=1, year_
 
     return sim_df
 
-def plot_diachronic_change(w_size, df, canon_col, embedding_col, cosim_to_plot, ax, step_size=1, year_col='start_year', n_runs=1, sampling=False, sample_size=0, simulate=False, num_simulations=0, sim_type='none', cutoff=5, color='#75BCC6'):
-
-    plt.style.use('default')
+def plot_diachronic_change(w_size, df, canon_col, embedding_col, cosim_to_plot, ax, step_size=1, year_col='start_year', n_runs=1, sampling=False, sample_size=0, simulate=False, num_simulations=0, sim_type='none', cutoff=5, color='C0'):
 
     # get dataframe of cosine similarity for each time window for chosen canon measure 
     sim_df = run_change_analysis(
@@ -246,18 +270,15 @@ def plot_diachronic_change(w_size, df, canon_col, embedding_col, cosim_to_plot, 
 
     min_group_idx = int(sim_df['n_paintings'].explode().idxmin())
     min_group_size = min(sim_df['n_paintings'].iloc[min_group_idx])
-    #min_group_year = sim_df['START_year'].iloc[min_group_idx]
-    #min_group_cosim = sim_df[cosim_to_plot].iloc[min_group_idx]
-
-    # remove first n and last n windows
-    #sim_df = sim_df.iloc[cutoff:-cutoff]
     
-        # get correlation between year and cosine similarity
+    # get correlation between year and cosine similarity
     corr, pval = spearmanr(sim_df['START_year'], sim_df[cosim_to_plot])
 
     # plot change over time
-    ax.plot(sim_df['START_year'], sim_df[cosim_to_plot], color=color, linewidth=2, alpha=0.7)
-    #ax.plot(min_group_year, min_group_cosim, marker='x', color='red', markersize=5, label='Minimum group size')
+    ax.plot(sim_df['START_year'], sim_df[cosim_to_plot], color=color, linewidth=3, alpha=1)
+
+    for spine in ax.spines.values():
+        spine.set_linewidth(1.5)
 
     if pval < 0.01:
         greater_dir = '<'
@@ -267,32 +288,26 @@ def plot_diachronic_change(w_size, df, canon_col, embedding_col, cosim_to_plot, 
     col_or_grey = 'colored' if embedding_col == 'embedding' else 'greyscaled'
 
     title_mapping = {'exb_canon': 'Exhibitions canon',
-                     'smk_exhibitions': 'SMK exhibitions',
+                     'smk_exhibitions': 'SMK exhibitions canon',
                      'on_display': 'On display canon'}
 
     ylabel = 'Mean Cosine Similarity'
 
     if cosim_to_plot == 'CANON_NONCANON_COSIM':
-        ax.set_title(f'{title_mapping[canon_col]} vs non-canon, {col_or_grey}, $r$ = {round(corr, 2)}, p{greater_dir}0.1')
+        ax.set_title(f"{title_mapping[canon_col]} ({col_or_grey})\n$r$ = {corr:.2f}, p {greater_dir} 0.1")
         ylabel = 'Cosine Similarity'
 
     elif cosim_to_plot == 'TOTAL_COSIM_MEAN':
-        ax.set_title(f'Total data, {col_or_grey}, $r$ = {round(corr, 2)}, p{greater_dir}0.1')
+        ax.set_title(f'Total data ({col_or_grey})\n$r$ = {corr:.2f}, p {greater_dir} 0.1')
 
     else:
-        ax.set_title(f'{title_mapping[canon_col]}, {col_or_grey}, $r$ = {round(corr, 2)}, p{greater_dir}0.1')
+        ax.set_title(f'{title_mapping[canon_col]} ({col_or_grey})\n$r$ = {corr:.2f}, p {greater_dir} 0.1')
 
     # create plot
-    ax.set_xlabel(year_col)
+    ax.set_xlabel('t')
     ax.set_ylabel(ylabel)
-    #ax.legend(fontsize=8)
-
-    #ax.set_xlim(sim_df['START_year'].iloc[0], sim_df['START_year'].iloc[-1])
-    #props = dict(boxstyle='round', facecolor='wheat', alpha=0.5)
-
-    # place a text box in upper right in axes coords
-    #ax.text(0.5, 0.95, f"r = {round(corr, 2)}, p{greater_dir}0.1", transform=ax.transAxes, fontsize=10,
-        #verticalalignment='top')
+    ax.grid(True, linestyle='--', alpha=0.5)
+    ax.tick_params(axis='both', which='major', length=4, width=1)
     
 def create_stacked_freqplot(df, ax, canon_col, w_size, year_col = 'start_year'):
 
@@ -301,8 +316,8 @@ def create_stacked_freqplot(df, ax, canon_col, w_size, year_col = 'start_year'):
 
     # add title mapping for plotting purposes
     title_mapping = {'exb_canon': 'Exhibitions canon',
-                    'smk_exhibitions': 'SMK exhibitions',
-                    'on_display': 'On display canon'}
+                     'smk_exhibitions': 'SMK exhibitions canon',
+                     'on_display': 'On display canon'}
 
     groupobject = df.groupby([year_col, canon_col]).size().unstack()
     groupobject = groupobject.rename(columns=column_mapping)
@@ -321,7 +336,7 @@ def create_stacked_freqplot(df, ax, canon_col, w_size, year_col = 'start_year'):
 
 def plot_grid(df, color_subset, canon_cols, w_size, cosim_to_plot, title, savefig, filename):
 
-    fig, axs = plt.subplots(2, len(canon_cols), figsize=(len(canon_cols)*7, 10))
+    fig, axs = plt.subplots(2, 3, figsize=(19, 11))
 
     for idx, col in enumerate(canon_cols):
 
@@ -339,13 +354,14 @@ def plot_grid(df, color_subset, canon_cols, w_size, cosim_to_plot, title, savefi
                             cosim_to_plot = cosim_to_plot, 
                             ax = axs[1, idx])
 
-        #create_stacked_freqplot(df=df, w_size = 30, ax = axs[2, idx], canon_col=col)
-
-
-    #fig.suptitle(f'{title}, w_size = {w_size}', size = 20, y=0.95)
-
-    if savefig==True:
-        plt.savefig(filename, format='png', dpi=1200)
+        if idx != 0:
+            axs[0, idx].set_ylabel('')   # Remove Y label for all columns except for first
+            axs[1, idx].set_ylabel('') 
+            
+    if savefig:
+            plt.savefig(filename, format='pdf', bbox_inches='tight')
+    
+    fig.tight_layout()
     
 ##################### ENTROPY / CHANGE DETECTION ##################################
 
@@ -496,7 +512,7 @@ def all_analyses_plots(df, color_subset, canon_cols, plot_suffix, plot_folder, i
             title = f"{col}, greyscale")
 
     fig.suptitle('PCA by canon category', size = 15, y=0.95)
-    plt.savefig(os.path.join(plot_folder, f'PCA_{plot_suffix}.png'), format='png', dpi=1200)
+    plt.savefig(os.path.join(plot_folder, f'PCA_{plot_suffix}.pdf'), format='pdf', dpi=300)
 
     # intra-group, canon, non-canon and total data
 
@@ -518,7 +534,7 @@ def all_analyses_plots(df, color_subset, canon_cols, plot_suffix, plot_folder, i
             ax = axs[1])
     
     fig.suptitle(f'Intra-group analysis for total data, w_size = {inter_intra_w}', size = 15, y=0.97)
-    plt.savefig(os.path.join(plot_folder, f'intra_total_w{inter_intra_w}_{plot_suffix}.png'), format='png', dpi=1200)
+    plt.savefig(os.path.join(plot_folder, f'intra_total_w{inter_intra_w}_{plot_suffix}.pdf'), format='pdf', dpi=300)
 
     # intra, canon
 
@@ -529,7 +545,7 @@ def all_analyses_plots(df, color_subset, canon_cols, plot_suffix, plot_folder, i
                 cosim_to_plot='CANON_COSIM_MEAN', 
                 title='Intra-group analysis for all canon variables', 
                 savefig=True,
-                filename=os.path.join(plot_folder, f'intra_canon_w{inter_intra_w}_{plot_suffix}.png'))
+                filename=os.path.join(plot_folder, f'intra_canon_w{inter_intra_w}_{plot_suffix}.pdf'))
     
     # intra, non-canon
     plot_grid(df = df, 
@@ -539,7 +555,7 @@ def all_analyses_plots(df, color_subset, canon_cols, plot_suffix, plot_folder, i
             cosim_to_plot='NONCANON_COSIM_MEAN', 
             title='Intra-group analysis for all non-canon',
             savefig=True,
-            filename=os.path.join(plot_folder, f'intra_noncanon_w{inter_intra_w}_{plot_suffix}.png'))
+            filename=os.path.join(plot_folder, f'intra_noncanon_w{inter_intra_w}_{plot_suffix}.pdf'))
 
     # inter-group
     plot_grid(df = df, 
@@ -549,7 +565,7 @@ def all_analyses_plots(df, color_subset, canon_cols, plot_suffix, plot_folder, i
                 cosim_to_plot='CANON_NONCANON_COSIM', 
                 title='Inter-group analysis for all canon variables',
                 savefig=True,
-                filename=os.path.join(plot_folder, f'inter_w{inter_intra_w}_{plot_suffix}.png'))
+                filename=os.path.join(plot_folder, f'inter_w{inter_intra_w}_{plot_suffix}.pdf'))
 
     # NOVELTY // ENTROPY PLOTS
 
@@ -558,7 +574,7 @@ def all_analyses_plots(df, color_subset, canon_cols, plot_suffix, plot_folder, i
     plot_canon_novelty(df, 'total', 'Total data', 'embedding', novelty_w, 'start_year', 'greyscale', axs[0])
     plot_canon_novelty(color_subset, 'total', 'Total data', 'embedding', novelty_w, 'start_year', 'colored', axs[1])
     fig.suptitle('Novelty signal for total data with mean embedding per year (all data)', size = 13, y=0.97)
-    plt.savefig(os.path.join(plot_folder, f'novelty_w=mean_embed_year_w{novelty_w}_{plot_suffix}.png'), format='png', dpi=1200)
+    plt.savefig(os.path.join(plot_folder, f'novelty_w=mean_embed_year_w{novelty_w}_{plot_suffix}.pdf'), format='pdf', dpi=300)
 
     # canon data
     fig, axs = plt.subplots(2, 3, figsize=(15, 10))
@@ -583,7 +599,7 @@ def all_analyses_plots(df, color_subset, canon_cols, plot_suffix, plot_folder, i
                             ax = axs[1, idx])
 
     fig.suptitle(f'Novelty signal for all canon variables, w_size = {novelty_w}', size = 20, y=0.97)
-    plt.savefig(os.path.join(plot_folder, f'novelty_w=mean_embed_year_canon_w{novelty_w}_{plot_suffix}.png'), format='png', dpi=1200)
+    plt.savefig(os.path.join(plot_folder, f'novelty_w=mean_embed_year_canon_w{novelty_w}_{plot_suffix}.pdf'), format='pdf', dpi=300)
     
     # non-canon data
 
@@ -608,7 +624,7 @@ def all_analyses_plots(df, color_subset, canon_cols, plot_suffix, plot_folder, i
                             ax = axs[1, idx])
 
     fig.suptitle(f'Novelty signal for all non-canon, w_size = {novelty_w}', size = 20, y=0.97)
-    plt.savefig(os.path.join(plot_folder, f'novelty_w=mean_embed_year_noncanon_w{novelty_w}_{plot_suffix}.png'), format='png', dpi=1200)
+    plt.savefig(os.path.join(plot_folder, f'novelty_w=mean_embed_year_noncanon_w{novelty_w}_{plot_suffix}.pdf'), format='pdf', dpi=300)
 
 def print_classification_results(canon_cols, models, sampling_methods, df, embedding_col, col_or_grey, report_suffix, out_folder):
 
