@@ -123,6 +123,53 @@ def pca_binary(ax, df, embedding, canon_category, title):
 
 ##################### DIACHRONIC CHANGE ##################################
 
+def calc_bootstrap_CI_intra(n_bootstraps, similarities):
+    rng = np.random.default_rng(seed=42)
+    means = []
+
+    for _ in range(n_bootstraps):
+        sample = rng.choice(similarities, size=len(similarities), replace=True)
+        means.append(np.mean(sample))
+        
+    # Confidence interval (e.g., 95%)
+    lower = np.percentile(means, 2.5)
+    upper = np.percentile(means, 97.5)
+    #print(f"Mean: {np.mean(upper_triangle):.4f}, 95% CI: [{lower:.4f}, {upper:.4f}]")
+
+    CI = [lower, upper]
+
+    return CI 
+
+def calc_bootstrap_CI_inter(groups, embedding_col, n_bootstrap):
+
+    sims = []
+
+    canon_embeddings = np.stack(groups['canon'][embedding_col].values)
+    noncanon_embeddings = np.stack(groups['non_canon'][embedding_col].values)
+
+    for _ in range(n_bootstrap):
+
+        idx_canon = np.random.choice(len(canon_embeddings), size=len(canon_embeddings), replace=True)
+        idx_noncanon = np.random.choice(len(noncanon_embeddings), size=len(noncanon_embeddings), replace=True)
+
+        sample_canon = canon_embeddings[idx_canon]
+        sample_noncanon = noncanon_embeddings[idx_noncanon]
+        
+        mean_canon = sample_canon.mean(axis=0)
+        mean_noncanon = sample_noncanon.mean(axis=0)
+        
+        sim = cosine_similarity(np.stack([mean_noncanon, mean_canon]))[0][1]
+        sims.append(sim)
+    
+    lower = np.percentile(sims, (100 - 0.95) / 2)
+    upper = np.percentile(sims, 100 - (100 - 0.95) / 2)
+
+    CI = [lower, upper]
+
+    mean_sim = np.mean(sims)
+    
+    return mean_sim, CI
+
 def get_cosim_mean_std(groups_dict, embedding_col, key):
 
     '''
@@ -131,10 +178,19 @@ def get_cosim_mean_std(groups_dict, embedding_col, key):
 
     data = groups_dict[key]
     embeddings = np.stack(data[embedding_col].values)
-    mean_cosim = cosine_similarity(embeddings).mean()
-    std_cosim = cosine_similarity(embeddings).std()
+    #mean_cosim = cosine_similarity(embeddings).mean()
+
+    similarities = cosine_similarity(embeddings)
     
-    return mean_cosim, std_cosim
+    # Remove diagonal (self-similarities = 1.0)
+    #upper_triangle = similarities[np.triu_indices_from(similarities, k=1)]
+
+    mean_cosim = similarities.mean()
+    #mean_cosim = upper_triangle.mean()
+
+    CI = calc_bootstrap_CI_intra(1000, similarities)
+    
+    return mean_cosim, CI
 
 def create_groups(df, year_col, canon_col, year_range):
 
@@ -172,6 +228,8 @@ def get_all_cosims(df, year_col, canon_col, year_range, embedding_col, sampling,
     canon_mean = groups['canon'][embedding_col].mean(axis=0)
     non_canon_mean = groups['non_canon'][embedding_col].mean(axis=0)
 
+    _, inter_CI = calc_bootstrap_CI_inter(groups, embedding_col, 1000)
+
     temp = {} 
 
     # get the mean cosine similarity between mean canon embedding and mean non-canon embedding for this time window
@@ -179,21 +237,22 @@ def get_all_cosims(df, year_col, canon_col, year_range, embedding_col, sampling,
     #canon_noncanon_similarity = cosine_similarity(np.stack([non_canon_mean, canon_mean])).mean()
     canon_noncanon_similarity = cosine_similarity(np.stack([non_canon_mean, canon_mean]))[0][1]
     temp['CANON_NONCANON_COSIM'] = canon_noncanon_similarity
+    temp['CANON_NONCANON_COSIM_CI'] = inter_CI
 
     # get mean cosine similarity of canon embeddings for this time window
-    canon_mean, canon_std = get_cosim_mean_std(groups, embedding_col, 'canon')
+    canon_mean, canon_CI = get_cosim_mean_std(groups, embedding_col, 'canon')
     temp['CANON_COSIM_MEAN'] = canon_mean 
-    temp['CANON_COSIM_STD'] = canon_std
+    temp['CANON_COSIM_CI'] = canon_CI
 
     # get mean cosine similarity of non-canon embeddings for this time window
-    nc_mean, nc_std = get_cosim_mean_std(groups, embedding_col, 'non_canon')
+    nc_mean, nc_CI = get_cosim_mean_std(groups, embedding_col, 'non_canon')
     temp['NONCANON_COSIM_MEAN'] = nc_mean
-    temp['NONCANON_COSIM_STD'] = nc_std
+    temp['NONCANON_COSIM_CI'] = nc_CI
 
     # get mean cosine similarity of all data for this time window
-    t_mean, t_std = get_cosim_mean_std(groups, embedding_col, 'df_total')
+    t_mean, t_CI = get_cosim_mean_std(groups, embedding_col, 'df_total')
     temp['TOTAL_COSIM_MEAN'] = t_mean
-    temp['TOTAL_COSIM_STD'] = t_std
+    temp['TOTAL_COSIM_CI'] = t_CI
 
     temp['n_paintings'] = [len(groups['df_total']), len(groups['canon']), len(groups['non_canon'])]
     
@@ -244,7 +303,6 @@ def run_change_analysis(w_size, df, canon_col, embedding_col, step_size=1, year_
         part_canon = canon / total
         part_canon_list.append(part_canon)
 
-
     #print(f"mean canon part: {np.mean(part_canon_list)}, min canon part: {np.min(part_canon_list)}, max canon part: {np.max(part_canon_list)}")
     #print(sim_df['n_paintings'].apply(lambda x: min(x)).min(), "is the smallest group size in a window")
 
@@ -268,6 +326,7 @@ def plot_diachronic_change(w_size, df, canon_col, embedding_col, cosim_to_plot, 
                 sim_type=sim_type
     )
 
+    #print(sim_df.columns)
     min_group_idx = int(sim_df['n_paintings'].explode().idxmin())
     min_group_size = min(sim_df['n_paintings'].iloc[min_group_idx])
     
@@ -275,7 +334,11 @@ def plot_diachronic_change(w_size, df, canon_col, embedding_col, cosim_to_plot, 
     corr, pval = spearmanr(sim_df['START_year'], sim_df[cosim_to_plot])
 
     # plot change over time
-    ax.plot(sim_df['START_year'], sim_df[cosim_to_plot], color=color, linewidth=3, alpha=1)
+    ax.plot(sim_df['START_year'], 
+            sim_df[cosim_to_plot], 
+            color=color, 
+            linewidth=3, 
+            alpha=1)
 
     for spine in ax.spines.values():
         spine.set_linewidth(1.5)
@@ -293,15 +356,45 @@ def plot_diachronic_change(w_size, df, canon_col, embedding_col, cosim_to_plot, 
 
     ylabel = 'Mean Cosine Similarity'
 
+    #print(sim_df['CANON_COSIM_STD'])
+
     if cosim_to_plot == 'CANON_NONCANON_COSIM':
         ax.set_title(f"{title_mapping[canon_col]} ({col_or_grey})\n$r$ = {corr:.2f}, p {greater_dir} 0.1")
         ylabel = 'Cosine Similarity'
 
+        # add confidence interval band
+        #ci_lower = sim_df['CANON_NONCANON_COSIM_CI'].apply(lambda x: x[0])
+        #ci_upper = sim_df['CANON_NONCANON_COSIM_CI'].apply(lambda x: x[1])
+
+        #ax.fill_between(sim_df['START_year'], ci_lower, ci_upper, alpha=0.2)
+
+
     elif cosim_to_plot == 'TOTAL_COSIM_MEAN':
         ax.set_title(f'Total data ({col_or_grey})\n$r$ = {corr:.2f}, p {greater_dir} 0.1')
 
+        # add error band
+        CI = sim_df['TOTAL_COSIM_CI']
+        ci_lower = CI.apply(lambda x: x[0])
+        ci_upper = CI.apply(lambda x: x[1])
+        ax.fill_between(sim_df['START_year'], ci_lower, ci_upper, alpha=0.2)
+
+    elif cosim_to_plot == 'NONCANON_COSIM_MEAN':
+        ax.set_title(f'{title_mapping[canon_col]} ({col_or_grey})\n$r$ = {corr:.2f}, p {greater_dir} 0.1')
+
+        # add error band
+        CI = sim_df['NONCANON_COSIM_CI']
+        ci_lower = CI.apply(lambda x: x[0])
+        ci_upper = CI.apply(lambda x: x[1])
+        ax.fill_between(sim_df['START_year'], ci_lower, ci_upper, alpha=0.2)
+
     else:
         ax.set_title(f'{title_mapping[canon_col]} ({col_or_grey})\n$r$ = {corr:.2f}, p {greater_dir} 0.1')
+
+        # add error band
+        CI = sim_df['CANON_COSIM_CI']
+        ci_lower = CI.apply(lambda x: x[0])
+        ci_upper = CI.apply(lambda x: x[1])
+        ax.fill_between(sim_df['START_year'], ci_lower, ci_upper, alpha=0.2)
 
     # create plot
     ax.set_xlabel('t')
@@ -338,7 +431,7 @@ def plot_grid(df, color_subset, canon_cols, w_size, cosim_to_plot, title, savefi
 
     fig, axs = plt.subplots(2, 3, figsize=(19, 11))
 
-    for idx, col in enumerate(canon_cols):
+    for idx, col in enumerate(tqdm(canon_cols, desc=f"Plotting canon columns for {cosim_to_plot}")):
 
         plot_diachronic_change(w_size = 30, 
                             df = color_subset, 
@@ -357,11 +450,11 @@ def plot_grid(df, color_subset, canon_cols, w_size, cosim_to_plot, title, savefi
         if idx != 0:
             axs[0, idx].set_ylabel('')   # Remove Y label for all columns except for first
             axs[1, idx].set_ylabel('') 
-            
+
+    fig.tight_layout()
+
     if savefig:
             plt.savefig(filename, format='pdf', bbox_inches='tight')
-    
-    fig.tight_layout()
     
 ##################### ENTROPY / CHANGE DETECTION ##################################
 
