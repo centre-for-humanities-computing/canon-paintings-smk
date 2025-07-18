@@ -105,9 +105,9 @@ def pca_binary(ax, df, embedding, canon_category, title):
     #for spine in ax.spines.values():
         #spine.set_visible(False)
 
-    ax.set_title(title, fontsize=10)
-    ax.set_xlabel("PCA1", fontsize=8)
-    ax.set_ylabel("PCA2", fontsize=8)
+    ax.set_title(title, fontsize=12)
+    ax.set_xlabel("PCA1", fontsize=10)
+    ax.set_ylabel("PCA2", fontsize=10)
     ax.tick_params(axis='both', labelsize=7)
     ax.grid(True, linestyle='--', alpha=0.2)
 
@@ -333,6 +333,9 @@ def plot_diachronic_change(w_size, df, canon_col, embedding_col, cosim_to_plot, 
     # get correlation between year and cosine similarity
     corr, pval = spearmanr(sim_df['START_year'], sim_df[cosim_to_plot])
 
+    if embedding_col == 'grey_embedding':
+        color = 'grey'
+
     # plot change over time
     ax.plot(sim_df['START_year'], 
             sim_df[cosim_to_plot], 
@@ -359,7 +362,7 @@ def plot_diachronic_change(w_size, df, canon_col, embedding_col, cosim_to_plot, 
     #print(sim_df['CANON_COSIM_STD'])
 
     if cosim_to_plot == 'CANON_NONCANON_COSIM':
-        ax.set_title(f"{title_mapping[canon_col]} ({col_or_grey})\n$r$ = {corr:.2f}, p {greater_dir} 0.1")
+        ax.set_title(f"{title_mapping[canon_col]} ({col_or_grey}), $\\rho = {corr:.2f}$", fontsize = 17)
         ylabel = 'Cosine Similarity'
 
         # add confidence interval band
@@ -367,45 +370,59 @@ def plot_diachronic_change(w_size, df, canon_col, embedding_col, cosim_to_plot, 
         #ci_upper = sim_df['CANON_NONCANON_COSIM_CI'].apply(lambda x: x[1])
 
         #ax.fill_between(sim_df['START_year'], ci_lower, ci_upper, alpha=0.2)
-
+        label_fontsize = 16
 
     elif cosim_to_plot == 'TOTAL_COSIM_MEAN':
-        ax.set_title(f'Total data ({col_or_grey})\n$r$ = {corr:.2f}, p {greater_dir} 0.1')
+        ax.set_title(f'Total data ({col_or_grey}), $\\rho = {corr:.2f}$', fontsize = 14)
 
         # add error band
         CI = sim_df['TOTAL_COSIM_CI']
         ci_lower = CI.apply(lambda x: x[0])
         ci_upper = CI.apply(lambda x: x[1])
-        ax.fill_between(sim_df['START_year'], ci_lower, ci_upper, alpha=0.2)
+        ax.fill_between(sim_df['START_year'], ci_lower, ci_upper, alpha=0.2, color = color)
+
+        # specify fontsize
+
+        label_fontsize = 12
 
     elif cosim_to_plot == 'NONCANON_COSIM_MEAN':
-        ax.set_title(f'{title_mapping[canon_col]} ({col_or_grey})\n$r$ = {corr:.2f}, p {greater_dir} 0.1')
-
+        ax.set_title(f'Total non-canon ({col_or_grey}), $\\rho = {corr:.2f}$', fontsize = 12)
+        
         # add error band
         CI = sim_df['NONCANON_COSIM_CI']
         ci_lower = CI.apply(lambda x: x[0])
         ci_upper = CI.apply(lambda x: x[1])
-        ax.fill_between(sim_df['START_year'], ci_lower, ci_upper, alpha=0.2)
+        ax.fill_between(sim_df['START_year'], ci_lower, ci_upper, alpha=0.2, color = color)
+
+        # specify fontsize
+        label_fontsize = 12
 
     else:
-        ax.set_title(f'{title_mapping[canon_col]} ({col_or_grey})\n$r$ = {corr:.2f}, p {greater_dir} 0.1')
+        ax.set_title(f'{title_mapping[canon_col]} ({col_or_grey}), $\\rho = {corr:.2f}$', fontsize = 17)
 
         # add error band
         CI = sim_df['CANON_COSIM_CI']
         ci_lower = CI.apply(lambda x: x[0])
         ci_upper = CI.apply(lambda x: x[1])
-        ax.fill_between(sim_df['START_year'], ci_lower, ci_upper, alpha=0.2)
+        ax.fill_between(sim_df['START_year'], ci_lower, ci_upper, alpha=0.2, color = color)
+
+        label_fontsize = 16
 
     # create plot
-    ax.set_xlabel('t')
-    ax.set_ylabel(ylabel)
+    ax.set_xlabel('t', fontsize = label_fontsize)
+    ax.set_ylabel(ylabel, fontsize = label_fontsize)
     ax.grid(True, linestyle='--', alpha=0.5)
-    ax.tick_params(axis='both', which='major', length=4, width=1)
+    ax.tick_params(axis='both', which='major', length=4, width=1, labelsize=12)
     
 def create_stacked_freqplot(df, ax, canon_col, w_size, year_col = 'start_year'):
 
     # change label names for plotting purposes
     column_mapping = {'canon': 'Canon', 'other': 'Non-canon'}
+
+    bar_colors = {
+        'Canon': '#08306B',      
+        'Non-canon': '#6BAED6'  
+    }
 
     # add title mapping for plotting purposes
     title_mapping = {'exb_canon': 'Exhibitions canon',
@@ -415,17 +432,28 @@ def create_stacked_freqplot(df, ax, canon_col, w_size, year_col = 'start_year'):
     groupobject = df.groupby([year_col, canon_col]).size().unstack()
     groupobject = groupobject.rename(columns=column_mapping)
     
-    groupobject.plot(kind='bar', stacked=True, ax=ax)
+    groupobject.plot(kind='bar', stacked=True, ax=ax, edgecolor='none', width=0.95, color=[bar_colors.get(col, '#333333') for col in groupobject.columns])
 
-    N = w_size
+    N = 10
     ax.set_xticks(range(0, len(groupobject), N))
     ax.set_xticklabels(groupobject.index[::N])
 
-    ax.set_title(f'{title_mapping[canon_col]} frequency')
-    ax.set_xlabel(year_col)   
+    ax.set_xlabel('Production year')
     ax.set_ylabel('Number of paintings')
+    ax.set_title(f"{title_mapping[canon_col]}", pad=10)
 
-    ax.legend(title='Canon status', loc='upper right')
+    ax.legend(title='Canon status', loc='upper left', frameon=False)
+
+    for spine in ax.spines.values():
+        spine.set_linewidth(1.5)
+
+    ax.tick_params(axis='both', which='major', length=4, width=1)
+
+    # Grid for clarity
+    ax.grid(True, linestyle='--', alpha=0.5)
+
+    # Final layout cleanup
+    ax.margins(x=0)
 
 def plot_grid(df, color_subset, canon_cols, w_size, cosim_to_plot, title, savefig, filename):
 
@@ -785,7 +813,7 @@ def pca_icons(ax, df, ds, embedding, image_col, out_folder, filename):
         ab = AnnotationBbox(getImage(ds[index][image_col]), (row["PCA1"], row["PCA2"]), frameon=False)
         ax.add_artist(ab)
 
-    plt.savefig(os.path.join(out_folder, filename), format='eps', dpi=1200)
+    plt.savefig(os.path.join(out_folder, filename), format='pdf', dpi=1200)
 
     np.seterr(divide='ignore', invalid='ignore')
 
@@ -820,3 +848,56 @@ def umap_plot(ax, df, ds, embedding, filename, n_components=50):
     plt.savefig(os.path.join('figs', filename), format='eps', dpi=1200)
 
     np.seterr(divide='ignore', invalid='ignore')
+
+def plot_exb_venues(df, filename):
+
+    counts = df['exhibition_venues'].explode().value_counts().head(20)
+    counts = counts.rename(index={'Sølvgade': 'Statens Museum for Kunst'})
+
+    plt.figure(figsize=(11, 11))
+
+    ax = counts.plot(kind='barh', color='#4c72b0')
+    ax.invert_yaxis()
+
+    ax.set_xlabel('Count', labelpad=10)
+    ax.set_ylabel('')
+
+    ax.bar_label(ax.containers[0], label_type='edge', padding=3, fontsize=12)
+
+        # Format spines and ticks
+    for spine in ax.spines.values():
+        spine.set_linewidth(1.5)
+    
+    ax.tick_params(axis='both', which='major', length=4, width=1)
+
+    # Add subtle gridlines
+    ax.grid(axis='x', linestyle='--', alpha=0.5)
+
+    # Clean layout
+    plt.tight_layout()
+    plt.savefig(os.path.join('figs', filename), format='pdf', dpi=300)
+
+
+def plot_pca_comparison(df,ds,start_period=(1750, 1780),end_period=(1781, 1810), embedding_type='embedding', canon_filter='all', title=None, save_path=None):
+
+    def filter_data(dataframe, year_range, canon):
+        subset = dataframe.query(f'start_year >= {year_range[0]} and start_year <= {year_range[1]}')
+        if canon != 'all':
+            subset = subset.query(f'exb_canon == "{canon}"')
+        idxs = subset.index.tolist()
+        return subset, ds.select(idxs)
+
+    df1, ds1 = filter_data(df, start_period, canon_filter)
+    df2, ds2 = filter_data(df, end_period, canon_filter)
+
+    fig, axs = plt.subplots(1, 2, figsize=(20, 10))
+    pca_icons(axs[0], df1, ds1, embedding_type, 'image', 'figs', 'trash1.pdf')
+    pca_icons(axs[1], df2, ds2, embedding_type, 'image', 'figs', 'trash2.pdf')
+
+    if title:
+        fig.suptitle(title, fontsize=15)
+
+    if save_path:
+        plt.savefig(os.path.join('figs', save_path), bbox_inches='tight', format='pdf', dpi=1200)
+
+    #plt.show()
