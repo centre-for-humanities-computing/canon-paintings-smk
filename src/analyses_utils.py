@@ -813,7 +813,7 @@ def pca_icons(ax, df, ds, embedding, image_col, out_folder, filename):
         ab = AnnotationBbox(getImage(ds[index][image_col]), (row["PCA1"], row["PCA2"]), frameon=False)
         ax.add_artist(ab)
 
-    plt.savefig(os.path.join(out_folder, filename), format='pdf', dpi=1200)
+    plt.savefig(os.path.join(out_folder, filename), format='eps', dpi=1200)
 
     np.seterr(divide='ignore', invalid='ignore')
 
