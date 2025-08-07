@@ -24,20 +24,7 @@ def main():
 
     # read df from pickle 
     df = pd.read_pickle(os.path.join('data', args['df_name']))
-    ds = datasets.load_from_disk(os.path.join('data', args['ds_name']))
-
-    # create total canon/non-canon variable
-    total_canon = []
-    for idx, row in df.iterrows():
-        if (
-            row['exb_canon'] == 'canon' or
-            row['smk_exhibitions'] == 'canon' or
-            row['on_display'] == 'canon'
-        ):
-            total_canon.append('canon')
-        else:
-            total_canon.append('other')
-    df['total_canons'] = total_canon 
+    ds = datasets.load_from_disk(os.path.join('data', args['ds_name'])) 
 
     # make subset of colored images only 
     color_subset = df.query('rgb == "color"')
@@ -50,10 +37,12 @@ def main():
 
     if args['plot']:
 
+        print('Creating plots...')
+
         #analysis_plots(df=df, 
-                    #color_subset = color_subset, 
-                    #w_size = 30, 
-                    #canon_cols= canon_cols)
+                   # color_subset = color_subset, 
+                  #  w_size = 30, 
+                   # canon_cols= canon_cols)
         
         dataset_visualizations(canon_cols = canon_cols, 
                                df = df, 
@@ -62,6 +51,8 @@ def main():
                                ds_color = ds_color)
 
     if args['classification']:
+
+        print('Running classifiers...')
 
         models = ['logistic', 'mlp']
         sampling_methods = [False, True]
@@ -72,16 +63,14 @@ def main():
                                      sampling_methods=sampling_methods, 
                                      df=df, 
                                      embedding_col='grey_embedding', 
-                                     col_or_grey='greyscale', 
-                                     out_folder='classification_results')
+                                     col_or_grey='greyscale')
 
         print_classification_results(canon_cols=canon_cols, 
                                      models=models, 
                                      sampling_methods=sampling_methods, 
                                      df=df, 
                                      embedding_col='embedding', 
-                                     col_or_grey='color',  
-                                     out_folder='classification_results')
+                                     col_or_grey='color')
 
 if __name__ == '__main__':
    main()

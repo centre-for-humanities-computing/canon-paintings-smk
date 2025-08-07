@@ -1,3 +1,7 @@
+'''
+Util functions for analyses of canonicity in SMK dataset
+'''
+# load relevant modules
 from PIL import Image
 import os
 import pandas as pd
@@ -15,8 +19,6 @@ import matplotlib.pyplot as plt
 from sklearn.neighbors import NearestNeighbors
 import re
 import sys
-#sys.path.append(os.path.abspath(".."))
-#from src.utils import plot_neighbors, pca_binary, plot_pca_scale, plot_dendrogram
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.decomposition import PCA
 from matplotlib.patches import Patch
@@ -42,7 +44,6 @@ from umap import UMAP
 import cv2 
 from PIL import Image
 
-#sys.path.append(os.path.abspath(".."))
 from src.utils import WindowedRollingDistance
 from src.utils import calc_vector_histogram
 from scipy.ndimage import gaussian_filter1d
@@ -50,6 +51,9 @@ from scipy.ndimage import gaussian_filter1d
 # we get a lot of annoying warnings from sklearn so we suppress them
 import warnings
 warnings.filterwarnings('ignore')
+
+# type hints
+from typing import List, Tuple, Dict, Any
 
 # default params
 plt.rcParams.update({
@@ -68,9 +72,21 @@ plt.rcParams.update({
     'font.sans-serif': ['Arial']
 })
 
-##################### PCA ##################################
+################################## PCA ##################################
 
 def pca_binary(ax, df, embedding, canon_category, title):
+
+    '''
+    Create PCA scatterplot of painting embeddings for each canon category
+        
+    Parameters:
+    - ax: Matplotlib Axes object to plot on
+    - df: DataFrame containing the data
+    - embedding: Column name with embedding vectors
+    - canon_category: Column name for the binary canon category
+    - title: Plot title
+
+    '''
     
     embeddings_array = np.array(df[embedding].to_list(), dtype=np.float32)
     
@@ -86,9 +102,6 @@ def pca_binary(ax, df, embedding, canon_category, title):
     # Plot each category
     for category in df_pca["canon"].unique():
         subset = df_pca[df_pca["canon"] == category]
-
-        #marker = markers_dict.get(category) 
-        #alpha = alpha_dict.get(category)
         
         ax.scatter(
             subset["PCA1"],
@@ -98,14 +111,8 @@ def pca_binary(ax, df, embedding, canon_category, title):
             alpha=0.6,
             edgecolor='black',
             s=110,
-            marker='o' #marker
+            marker='o'
         )
-
-    #for spine in ax.spines.values():
-        #spine.set_linewidth(1.5)
-
-    #for spine in ax.spines.values():
-        #spine.set_visible(False)
 
     ax.set_title(title, fontsize=12)
     ax.set_xlabel("PCA1", fontsize=10)
@@ -119,87 +126,88 @@ def pca_binary(ax, df, embedding, canon_category, title):
     ax.axis("equal")
 
     # supress warnings 
-
     np.seterr(divide='ignore', invalid='ignore')
 
 
-##################### DIACHRONIC CHANGE ##################################
+################################## DIACHRONIC CHANGE ##################################
 
-def calc_bootstrap_CI_intra(n_bootstraps, similarities):
+def calc_bootstrap_CI_intra(n_bootstraps:int, similarities:np.ndarray) -> list:
+
+    '''
+    Calculate bootstrapped 95% confidence intervals for mean intragroup similarity
+
+    Parameters:
+        - n_bootstraps: Number of bootstrap samples to generate
+        - similarities: Array of cosine similarities for in-group embeddings
+
+    Returns:
+        - List of lower and upper confidence interval bounds
+    '''
+
+    # create random number generator
     rng = np.random.default_rng(seed=42)
     means = []
 
     for _ in range(n_bootstraps):
-        sample = rng.choice(similarities, size=len(similarities), replace=True)
-        means.append(np.mean(sample))
+        sample = rng.choice(similarities, size=len(similarities), replace=True) # draw samples with replacement from cosine similarities
+        means.append(np.mean(sample)) # compute mean of bootstrapped sample
         
-    # Confidence interval (e.g., 95%)
+    # get confidence intervals
     lower = np.percentile(means, 2.5)
     upper = np.percentile(means, 97.5)
-    #print(f"Mean: {np.mean(upper_triangle):.4f}, 95% CI: [{lower:.4f}, {upper:.4f}]")
 
     CI = [lower, upper]
 
     return CI 
 
-def calc_bootstrap_CI_inter(groups, embedding_col, n_bootstrap):
-
-    sims = []
-
-    canon_embeddings = np.stack(groups['canon'][embedding_col].values)
-    noncanon_embeddings = np.stack(groups['non_canon'][embedding_col].values)
-
-    for _ in range(n_bootstrap):
-
-        idx_canon = np.random.choice(len(canon_embeddings), size=len(canon_embeddings), replace=True)
-        idx_noncanon = np.random.choice(len(noncanon_embeddings), size=len(noncanon_embeddings), replace=True)
-
-        sample_canon = canon_embeddings[idx_canon]
-        sample_noncanon = noncanon_embeddings[idx_noncanon]
-        
-        mean_canon = sample_canon.mean(axis=0)
-        mean_noncanon = sample_noncanon.mean(axis=0)
-        
-        sim = cosine_similarity(np.stack([mean_noncanon, mean_canon]))[0][1]
-        sims.append(sim)
-    
-    lower = np.percentile(sims, (100 - 0.95) / 2)
-    upper = np.percentile(sims, 100 - (100 - 0.95) / 2)
-
-    CI = [lower, upper]
-
-    mean_sim = np.mean(sims)
-    
-    return mean_sim, CI
-
-def get_cosim_mean_std(groups_dict, embedding_col, key):
+def get_cosim_mean_std(groups_dict:dict, embedding_col:str, key:str) -> tuple:
 
     '''
     Calculate mean and SD cosine similarity for embedding column of dataset in groups_dict
+
+    Parameters:
+        - groups_dict: Dict mapping group keys to DataFrames with embeddings
+        - embedding_col: Name of column with image embeddings
+        - key: Name of group to compute cosine similarity for (i.e., canon/non-canon)
+    
+    Returns:
+        - mean_cosim: Mean of cosine similarity in group
+        - CI: Upper and lower bounds of 95% bootstrapped confidence interval
     '''
 
+    # get group
     data = groups_dict[key]
+
+    # convert from list of arrays to single numpy array with added dim
     embeddings = np.stack(data[embedding_col].values)
-    #mean_cosim = cosine_similarity(embeddings).mean()
 
+    # get matrix of cosine sim pairs
     similarities = cosine_similarity(embeddings)
-    
-    # Remove diagonal (self-similarities = 1.0)
-    #upper_triangle = similarities[np.triu_indices_from(similarities, k=1)]
 
+    # calc mean cosim
     mean_cosim = similarities.mean()
-    #mean_cosim = upper_triangle.mean()
 
+    # calc bootstrapped confidence intervals
     CI = calc_bootstrap_CI_intra(1000, similarities)
     
     return mean_cosim, CI
 
-def create_groups(df, year_col, canon_col, year_range):
+def create_groups(df:pd.DataFrame, year_col:str, canon_col:str, year_range:list) -> dict:
 
     '''
     Create dict with groups of canon, non-canon and total paintings in specified time window
+
+    Parameters:
+        - df: Dataframe with SMK data
+        - year_col: Name of column with prod years
+        - canon_col: Canon variable to use
+        - year_range: List of years in window
+    
+    Returns:
+        - groups: Dict with canon, non-canon and total dataframes 
     '''
     
+    # filter dataframes based on year range and canon status
     canon = df.loc[(df[year_col].isin(year_range)) & (df[canon_col] == 'canon')]
     df_total = df.loc[df[year_col].isin(year_range)]
     non_canon = df.loc[(df[year_col].isin(year_range)) & (df[canon_col] == 'other')]
@@ -209,16 +217,30 @@ def create_groups(df, year_col, canon_col, year_range):
 
     return groups
 
-def get_all_cosims(df, year_col, canon_col, year_range, embedding_col, sampling, sample_size, run):
+def get_all_cosims(df:pd.DataFrame, year_col:str, canon_col:str, year_range:list, embedding_col:str, sampling:bool, sample_size:int, run:int) -> dict:
 
     '''
     Calculate all cosine similarity measures for current time window and return as dict. 
 
     First creates groups of canon, non-canon and total paintings in the current time window.
-    Next, it calculates the mean cosine similarity of the embeddings in the current window for each group.
-    The cosine similarity between the mean canon and non-canon embeddings is also calculated.
+    Next, it calculates the mean cosine similarity of the embeddings in the current window for each group (intra-group).
+    The cosine similarity between the mean canon and non-canon embeddings is also calculated (inter-group).
+
+    Parameters: 
+        - df: Dataframe with smk data
+        - year_col: Name of column with prod years
+        - canon_col: Canon variable to use
+        - year_range: List of years in window
+        - embedding_col: Name of column in df containing embeddings
+        - sampling: Whether to sample groups randomly
+        - sample_size = Number of samples
+        - run: Random state for sampling
+    
+    Returns:
+        - temp: dict with cosine similarity measures, confidence intervals and counts for each group
     '''
 
+    # get dict with filtered canon, non-canon and total dataframes in window
     groups = create_groups(df, year_col, canon_col, year_range)
 
     if sampling == True:
@@ -230,38 +252,63 @@ def get_all_cosims(df, year_col, canon_col, year_range, embedding_col, sampling,
     canon_mean = groups['canon'][embedding_col].mean(axis=0)
     non_canon_mean = groups['non_canon'][embedding_col].mean(axis=0)
 
-    _, inter_CI = calc_bootstrap_CI_inter(groups, embedding_col, 1000)
+   # _, inter_CI = calc_bootstrap_CI_inter(groups, embedding_col, 1000)
 
     temp = {} 
 
-    # get the mean cosine similarity between mean canon embedding and mean non-canon embedding for this time window
-    
-    #canon_noncanon_similarity = cosine_similarity(np.stack([non_canon_mean, canon_mean])).mean()
+    # get the mean cosine similarity between mean canon embedding and mean non-canon embedding for this time window (inter-group)
     canon_noncanon_similarity = cosine_similarity(np.stack([non_canon_mean, canon_mean]))[0][1]
     temp['CANON_NONCANON_COSIM'] = canon_noncanon_similarity
-    temp['CANON_NONCANON_COSIM_CI'] = inter_CI
+    #temp['CANON_NONCANON_COSIM_CI'] = inter_CI
 
-    # get mean cosine similarity of canon embeddings for this time window
+    # get mean cosine similarity of canon embeddings for this time window + confidence interval
     canon_mean, canon_CI = get_cosim_mean_std(groups, embedding_col, 'canon')
     temp['CANON_COSIM_MEAN'] = canon_mean 
     temp['CANON_COSIM_CI'] = canon_CI
 
-    # get mean cosine similarity of non-canon embeddings for this time window
+    # get mean cosine similarity of non-canon embeddings for this time window + confidence interval
     nc_mean, nc_CI = get_cosim_mean_std(groups, embedding_col, 'non_canon')
     temp['NONCANON_COSIM_MEAN'] = nc_mean
     temp['NONCANON_COSIM_CI'] = nc_CI
 
-    # get mean cosine similarity of all data for this time window
+    # get mean cosine similarity of all data for this time window + confidence interval
     t_mean, t_CI = get_cosim_mean_std(groups, embedding_col, 'df_total')
     temp['TOTAL_COSIM_MEAN'] = t_mean
     temp['TOTAL_COSIM_CI'] = t_CI
 
+    # add counts of paintings in group to dict
     temp['n_paintings'] = [len(groups['df_total']), len(groups['canon']), len(groups['non_canon'])]
     
     return temp
 
-def run_change_analysis(w_size, df, canon_col, embedding_col, step_size=1, year_col='start_year', n_runs=1, sampling=False, sample_size=0, simulate=False, num_simulations=0, sim_type='none'):
-    # raise error if w size is smaller than 5
+def run_change_analysis(w_size: int,
+                        df: pd.DataFrame,
+                        canon_col: str,
+                        embedding_col: str,
+                        step_size: int = 1,
+                        year_col: str = 'start_year',
+                        n_runs: int = 1,
+                        sampling: bool = False,
+                        sample_size: int = 0) -> pd.DataFrame:
+    
+    '''
+    Performs rolling window analyses over years to compute cosine similarity measures
+
+    Parameters:
+        - w_size: Size of rolling window in years
+        - df: SMK dataframe with embeddings
+        - canon_col: Canon variable to use
+        - embedding_col: Name of column in df containing embeddings
+        - step_size: Step size between windows
+        - year_col: Name of column with prod years
+        - n_runs: Number of runs for sampling
+        - sampling: Whether to sample paintings in groups
+        - sample_size: Number of samples if sample is true
+
+    Returns:
+        - sim_df: DataFrame with rolling window cosine similarity results
+    '''
+
     # Start a loop over the years
     mean_similarity_dict = {}
 
@@ -276,11 +323,8 @@ def run_change_analysis(w_size, df, canon_col, embedding_col, step_size=1, year_
             year_range = list(range(start_year, start_year + w_size))
             range_label = f"{year_range[0]}-{year_range[-1]}"
 
-            if simulate == True:
-                temp = simulate_all_cosims(df, year_col, canon_col, year_range, embedding_col, sampling, sample_size, run, num_simulations, sim_type)
-
-            else:
-                temp = get_all_cosims(df, year_col, canon_col, year_range, embedding_col, sampling, sample_size, run)
+            # calculate cosine similarity measures
+            temp = get_all_cosims(df, year_col, canon_col, year_range, embedding_col, sampling, sample_size, run)
             
             # add cosine similarity measure to dict for dict at time window
             mean_similarity_dict[range_label] = temp
@@ -292,27 +336,40 @@ def run_change_analysis(w_size, df, canon_col, embedding_col, step_size=1, year_
     # add start year column
     sim_df['START_year'] = sim_df['year_RANGE'].apply(lambda x: int(x.split('-')[0]))
 
-    # make sure there's at least 2 paintings in each group
-
-    sim_df['n_paintings']
-
-    part_canon_list = []
-
-    for l in sim_df['n_paintings']:
-        total = l[0]
-        canon = l[1]
-
-        part_canon = canon / total
-        part_canon_list.append(part_canon)
-
-    #print(f"mean canon part: {np.mean(part_canon_list)}, min canon part: {np.min(part_canon_list)}, max canon part: {np.max(part_canon_list)}")
-    #print(sim_df['n_paintings'].apply(lambda x: min(x)).min(), "is the smallest group size in a window")
-
     return sim_df
 
-def plot_diachronic_change(w_size, df, canon_col, embedding_col, cosim_to_plot, ax, step_size=1, year_col='start_year', n_runs=1, sampling=False, sample_size=0, simulate=False, num_simulations=0, sim_type='none', cutoff=5, color='C0'):
+def plot_diachronic_change(w_size: int,
+                           df: pd.DataFrame,
+                           canon_col: str,
+                           embedding_col: str,
+                           cosim_to_plot: str,
+                           ax: plt.Axes,
+                           step_size: int = 1,
+                           year_col: str = 'start_year',
+                           n_runs: int = 1,
+                           sampling: bool = False,
+                           sample_size: int = 0,
+                           color: str = 'C0'):
+    
+    '''
+    Create lineplot showing rolling window analysis of cosine similarities
 
-    # get dataframe of cosine similarity for each time window for chosen canon measure 
+    Parameters:
+        - w_size: Size of rolling window in years
+        - df: SMK dataframe with embeddings
+        - canon_col: Canon variable to use
+        - embedding_col: Name of column in df containing embeddings
+        - cosim_to_plot: Cosine Similarity measure to plot
+        - ax: plt axes to plot on
+        - step_size: Step size between windows
+        - year_col: Name of column with prod years
+        - n_runs: Number of runs for sampling
+        - sampling: Whether to sample paintings in groups
+        - sample_size: Number of samples if sample is true
+        - color: Default line color for the plot
+        '''
+
+    # run rolling window analysis
     sim_df = run_change_analysis(
                 w_size,
                 df,
@@ -323,18 +380,12 @@ def plot_diachronic_change(w_size, df, canon_col, embedding_col, cosim_to_plot, 
                 n_runs=n_runs,
                 sampling=sampling,
                 sample_size=sample_size,
-                simulate=simulate,
-                num_simulations=num_simulations,
-                sim_type=sim_type
     )
-
-    #print(sim_df.columns)
-    min_group_idx = int(sim_df['n_paintings'].explode().idxmin())
-    min_group_size = min(sim_df['n_paintings'].iloc[min_group_idx])
     
     # get correlation between year and cosine similarity
     corr, pval = spearmanr(sim_df['START_year'], sim_df[cosim_to_plot])
 
+    # if greyscaled embeddings, make lineplot grey
     if embedding_col == 'grey_embedding':
         color = 'grey'
 
@@ -345,64 +396,49 @@ def plot_diachronic_change(w_size, df, canon_col, embedding_col, cosim_to_plot, 
             linewidth=3, 
             alpha=1)
 
-    for spine in ax.spines.values():
-        spine.set_linewidth(1.5)
-
-    if pval < 0.01:
-        greater_dir = '<'
-    else:
-        greater_dir = '>'
-
-    col_or_grey = 'colored' if embedding_col == 'embedding' else 'greyscaled'
-
+    # fix titles for plot
     title_mapping = {'exb_canon': 'Exhibitions canon',
                      'smk_exhibitions': 'SMK exhibitions canon',
                      'on_display': 'On display canon'}
 
+    col_or_grey = 'colored' if embedding_col == 'embedding' else 'greyscaled'
+
     ylabel = 'Mean Cosine Similarity'
 
-    #print(sim_df['CANON_COSIM_STD'])
-
-    if cosim_to_plot == 'CANON_NONCANON_COSIM':
+    # add specifics of plot based on cosim to plot
+    if cosim_to_plot == 'CANON_NONCANON_COSIM': # inter-group
         ax.set_title(f"{title_mapping[canon_col]} ({col_or_grey}), $\\rho = {corr:.2f}$", fontsize = 17)
+        
+        # inter-group y axis is not mean cosine similarity, change this
         ylabel = 'Cosine Similarity'
-
-        # add confidence interval band
-        #ci_lower = sim_df['CANON_NONCANON_COSIM_CI'].apply(lambda x: x[0])
-        #ci_upper = sim_df['CANON_NONCANON_COSIM_CI'].apply(lambda x: x[1])
-
-        #ax.fill_between(sim_df['START_year'], ci_lower, ci_upper, alpha=0.2)
         label_fontsize = 16
 
-    elif cosim_to_plot == 'TOTAL_COSIM_MEAN':
+    elif cosim_to_plot == 'TOTAL_COSIM_MEAN': # total intra-group
         ax.set_title(f'Total data ({col_or_grey}), $\\rho = {corr:.2f}$', fontsize = 14)
 
-        # add error band
+        # add CI error band
         CI = sim_df['TOTAL_COSIM_CI']
         ci_lower = CI.apply(lambda x: x[0])
         ci_upper = CI.apply(lambda x: x[1])
         ax.fill_between(sim_df['START_year'], ci_lower, ci_upper, alpha=0.2, color = color)
 
-        # specify fontsize
-
         label_fontsize = 12
 
-    elif cosim_to_plot == 'NONCANON_COSIM_MEAN':
+    elif cosim_to_plot == 'NONCANON_COSIM_MEAN': # non-canon intra-group
         ax.set_title(f'Total non-canon ({col_or_grey}), $\\rho = {corr:.2f}$', fontsize = 12)
         
-        # add error band
+        # add CI error band
         CI = sim_df['NONCANON_COSIM_CI']
         ci_lower = CI.apply(lambda x: x[0])
         ci_upper = CI.apply(lambda x: x[1])
         ax.fill_between(sim_df['START_year'], ci_lower, ci_upper, alpha=0.2, color = color)
 
-        # specify fontsize
         label_fontsize = 12
 
-    else:
+    else: # intra-group
         ax.set_title(f'{title_mapping[canon_col]} ({col_or_grey}), $\\rho = {corr:.2f}$', fontsize = 17)
 
-        # add error band
+        # add CI error band
         CI = sim_df['CANON_COSIM_CI']
         ci_lower = CI.apply(lambda x: x[0])
         ci_upper = CI.apply(lambda x: x[1])
@@ -410,13 +446,73 @@ def plot_diachronic_change(w_size, df, canon_col, embedding_col, cosim_to_plot, 
 
         label_fontsize = 16
 
-    # create plot
+    # adjustments to plot layout
+    for spine in ax.spines.values():
+        spine.set_linewidth(1.5)
+    
     ax.set_xlabel('t', fontsize = label_fontsize)
     ax.set_ylabel(ylabel, fontsize = label_fontsize)
     ax.grid(True, linestyle='--', alpha=0.5)
     ax.tick_params(axis='both', which='major', length=4, width=1, labelsize=12)
+
+def plot_grid(df:pd.DataFrame, color_subset:pd.DataFrame, canon_cols:list, w_size:int, cosim_to_plot:str, savefig:bool, filename:str):
+
+    '''
+    Plot grid of diachronic change plots for canon variables and color and greyscale data
+
+    Parameters:
+        - df: Dataframe with paintings data
+        - color_subset: Dataframe with color paintings only
+        - canon_cols: List of canon columns in dataframe
+        - w_size: Rolling window size
+        - cosim_to_plot: Cosine Similarity measure to plot
+        - savefig: Whether to save the file or not
+        - filename: Path to or name of output pdf file
     
-def create_stacked_freqplot(df, ax, canon_col, w_size, year_col = 'start_year'):
+    '''
+
+    fig, axs = plt.subplots(2, 3, figsize=(19, 11))
+
+    # plot a diachronic change lineplot for each canon variable in a grid, for greyscale and color
+    for idx, col in enumerate(tqdm(canon_cols, desc=f"Plotting canon columns for {cosim_to_plot}")):
+
+        # color
+        plot_diachronic_change(w_size = 30, 
+                            df = color_subset, 
+                            canon_col = col, 
+                            embedding_col = 'embedding', 
+                            cosim_to_plot = cosim_to_plot, 
+                            ax = axs[0, idx])
+        
+        # greyscale
+        plot_diachronic_change(w_size = 30, 
+                            df = df, 
+                            canon_col = col, 
+                            embedding_col = 'grey_embedding', 
+                            cosim_to_plot = cosim_to_plot, 
+                            ax = axs[1, idx])
+
+        # remove y label for all columns except for first
+        if idx != 0:
+            axs[0, idx].set_ylabel('')
+            axs[1, idx].set_ylabel('') 
+
+    fig.tight_layout()
+
+    if savefig:
+            plt.savefig(filename, format='pdf', bbox_inches='tight')
+    
+def create_stacked_freqplot(df:pd.DataFrame, ax:plt.Axes, canon_col:str, year_col:str = 'start_year'):
+
+    '''
+    Create a stacked bar plot showing frequency counts of canon vs non-canon paintings per production year.
+
+    Parameters:
+        - df: DataFrame with SMK data
+        - ax: Plt ax to plot on
+        - canon_col: Canon variable to use
+        - year_col: Name of column in df containing production years
+    '''
 
     # change label names for plotting purposes
     column_mapping = {'canon': 'Canon', 'other': 'Non-canon'}
@@ -431,11 +527,14 @@ def create_stacked_freqplot(df, ax, canon_col, w_size, year_col = 'start_year'):
                      'smk_exhibitions': 'SMK exhibitions canon',
                      'on_display': 'On display canon'}
 
+    # group by year
     groupobject = df.groupby([year_col, canon_col]).size().unstack()
     groupobject = groupobject.rename(columns=column_mapping)
     
+    # create barplot
     groupobject.plot(kind='bar', stacked=True, ax=ax, edgecolor='none', width=0.95, color=[bar_colors.get(col, '#333333') for col in groupobject.columns])
 
+    # Plot each 10th year label to not overcrowd the x-axis
     N = 10
     ax.set_xticks(range(0, len(groupobject), N))
     ax.set_xticklabels(groupobject.index[::N])
@@ -451,49 +550,38 @@ def create_stacked_freqplot(df, ax, canon_col, w_size, year_col = 'start_year'):
 
     ax.tick_params(axis='both', which='major', length=4, width=1)
 
-    # Grid for clarity
     ax.grid(True, linestyle='--', alpha=0.5)
 
     # Final layout cleanup
     ax.margins(x=0)
 
-def plot_grid(df, color_subset, canon_cols, w_size, cosim_to_plot, title, savefig, filename):
-
-    fig, axs = plt.subplots(2, 3, figsize=(19, 11))
-
-    for idx, col in enumerate(tqdm(canon_cols, desc=f"Plotting canon columns for {cosim_to_plot}")):
-
-        plot_diachronic_change(w_size = 30, 
-                            df = color_subset, 
-                            canon_col = col, 
-                            embedding_col = 'embedding', 
-                            cosim_to_plot = cosim_to_plot, 
-                            ax = axs[0, idx])
-        
-        plot_diachronic_change(w_size = 30, 
-                            df = df, 
-                            canon_col = col, 
-                            embedding_col = 'grey_embedding', 
-                            cosim_to_plot = cosim_to_plot, 
-                            ax = axs[1, idx])
-
-        if idx != 0:
-            axs[0, idx].set_ylabel('')   # Remove Y label for all columns except for first
-            axs[1, idx].set_ylabel('') 
-
-    fig.tight_layout()
-
-    if savefig:
-            plt.savefig(filename, format='pdf', bbox_inches='tight')
-
-
-##################### SUPERVISED CLASSIFICATION ##################################
-def run_classification(df, embedding_col, canon_col, classifier, resample, sample_before, cv, random_state):
+################################## SUPERVISED CLASSIFICATION ##################################
+def run_classification(df:pd.DataFrame, embedding_col:str, canon_col:str, classifier:str, resample:bool, sample_before:bool, cv:bool, random_state:int):
     
+    '''
+    Run a supervised classification of canon/non-canon with optional sampling and cross validation steps.
+
+    Parameters:
+        - df: DataFrame with smk data
+        - embedding_col: Name of column in df with embeddings
+        - canon_col: Name of canon column variable to use
+        - classifier: Whether to use 'mlp' or 'logistic' classifier
+        - resample: Resample data or not
+        - sample_before: Sample before splitting in train/test or after (only used for experiments)
+        - cv: Whether to cross validate or not
+        - random_state: Set random state for reproducibility
+
+    Returns:
+        - Mean cross-validation score if cv=True; otherwise None
+    
+    '''
+
     X = np.array(df[embedding_col].tolist())
     y = np.array(df[canon_col])
 
     if classifier == 'mlp':
+
+        # specify mlp classifier parameters
         clf = MLPClassifier(random_state=random_state,
             hidden_layer_sizes=(100,),
             learning_rate='adaptive',
@@ -506,13 +594,12 @@ def run_classification(df, embedding_col, canon_col, classifier, resample, sampl
 
     if resample == True:
         if sample_before == True:
-            rus = RandomUnderSampler(random_state=random_state)
-            X, y = rus.fit_resample(X, y)
+            rus = RandomUnderSampler(random_state=random_state) # initiate undersampler
+            X, y = rus.fit_resample(X, y) # fit on data
             print(sorted(Counter(y).items()))
 
             if cv == True: 
                 scores = cross_val_score(clf, X, y, cv=10, scoring='f1_macro')
-                #print(f"Mean macro f1 cross val score: {scores.mean()}, sd: {scores.std()}")
                 return round(scores.mean(), 3)
             
             else: # if resample == True and sample_before == True, but no cv
@@ -524,11 +611,12 @@ def run_classification(df, embedding_col, canon_col, classifier, resample, sampl
 
         else: # resampling, but sample after splitting
             if cv == True:
+
+                # initiate pipeline from imbalanced-learn to apply sampling with corss validation
                 imba_pipeline = make_pipeline(RandomUnderSampler(random_state=random_state), clf)
         
                 cross_vals = cross_val_score(imba_pipeline, X, y, scoring='f1_macro', cv=10)
 
-                #print(f"Mean macro f1 cross val score: {cross_vals.mean()}, sd: {cross_vals.std()}")
                 return round(cross_vals.mean(), 3)
             
             else: # no cross validation
@@ -543,7 +631,6 @@ def run_classification(df, embedding_col, canon_col, classifier, resample, sampl
     else: # no resampling
         if cv == True:
             scores = cross_val_score(clf, X, y, cv=10, scoring='f1_macro')
-            #print(f"Mean macro f1 cross val score: {scores.mean()}, sd: {scores.std()}")
             return round(scores.mean(), 3)
         
         else: # no resampling and no cross validation
@@ -554,11 +641,20 @@ def run_classification(df, embedding_col, canon_col, classifier, resample, sampl
             return
 
 
-##################### FUNCTIONS TO GATHER ALL OF THESE // PLOT EVERYTHING ##################################
+################################## FUNCTIONS TO GATHER ALL OF THESE // PLOT EVERYTHING ##################################
 
-def analysis_plots(df, color_subset, w_size, canon_cols):
+def analysis_plots(df:pd.DataFrame, color_subset:pd.DataFrame, w_size:int, canon_cols:list):
 
-    ################# plot pca_binary, greyscale and color embeddings #################
+    '''
+    Gather analysis into single function to create and save plots
+
+    Parameters:
+        - df: DataFrame with smk data
+        - color_subset: DataFrame with colored images only
+        - w_size: Window size for rolling window analysis
+        - canon_cols: List of canon variables (columns)
+    '''
+    # create and save PCA plots, greyscale and color embeddings
     fig, axs = plt.subplots(1, 2, figsize=(10, 5))
 
     pca_binary(ax = axs[0], 
@@ -573,41 +669,38 @@ def analysis_plots(df, color_subset, w_size, canon_cols):
         canon_category = 'exb_canon', 
         title = "Exhibition canon (greyscale)")
     
-    plt.savefig(os.path.join('figs', f'PCA_exb_only.pdf'), format='pdf', dpi=300)
+    plt.savefig(os.path.join('results', 'figs', 'PCA_exb_only.pdf'), format='pdf', dpi=300)
 
-    ################# plot inter/intra group plots #################
+    # plot and save inter/intra group plots
 
-        # canon
+    # canon
     plot_grid(df = df,
            color_subset=color_subset, 
             canon_cols = canon_cols,
             w_size= 30, 
             cosim_to_plot='CANON_COSIM_MEAN', 
-            title='', 
             savefig=True,
-            filename=os.path.join('figs', f'intra_canon_w30.pdf'))
+            filename=os.path.join('results', 'figs', 'intra_canon_w30.pdf'))
 
-        # intra, non-canon
+    # intra, non-canon
     plot_grid(df = df, 
             color_subset = color_subset, 
             canon_cols = canon_cols,
             w_size= 30, 
-            cosim_to_plot='NONCANON_COSIM_MEAN', 
-            title='',
+            cosim_to_plot='NONCANON_COSIM_MEAN',
             savefig=True,
-            filename=os.path.join('figs', f'intra_noncanon_w30.pdf'))
+            filename=os.path.join('results', 'figs', 'intra_noncanon_w30.pdf'))
     
-        # inter-group
+    # inter-group
     plot_grid(df = df, 
               color_subset = color_subset, 
               canon_cols = canon_cols,
               w_size= 30, 
               cosim_to_plot='CANON_NONCANON_COSIM', 
-              title='',
               savefig=True,
-              filename=os.path.join('figs', f'inter_w30.pdf'))
-    
-        # plot total non-canon data
+              filename=os.path.join('results', 'figs', 'inter_w30.pdf'))
+
+    # plot and save total non-canon data intra-group plot
     fig, axs = plt.subplots(1, 2, figsize=(12, 5))
     
     plot_diachronic_change(w_size = 30, 
@@ -627,9 +720,23 @@ def analysis_plots(df, color_subset, w_size, canon_cols):
     # remove y label from second plot
     axs[1].set_ylabel("")
 
-    plt.savefig(os.path.join('figs', f'total_noncanon_w30.pdf'), format='pdf', dpi=300)
+    plt.savefig(os.path.join('results', 'figs', 'total_noncanon_w30.pdf'), format='pdf', dpi=300)
 
-def pca_icons(ax, df, ds, embedding, image_col, out_folder, filename):
+################################## DATASET VISUALIZATIONS ##################################
+def pca_icons(ax:plt.Axes, df:pd.DataFrame, ds: Dataset, embedding:str, image_col:str, filename:str=None):
+
+    '''
+    Plot PCA of image embeddings with painting icons instead of points
+
+    Parameters:
+        - ax: Plt axes to plot on
+        - df: Pandas dataframe with SMK data
+        - ds: HuggingFace dataset with images
+        - embedding: Name of embedding column in df
+        - image_col: Name of image column in ds
+        - filename: Filename to save figure under
+    '''
+    # convert list of embeddings to array
     embeddings_array = np.array(df[embedding].to_list(), dtype=np.float32)
 
     # to 2 dimensions
@@ -645,6 +752,7 @@ def pca_icons(ax, df, ds, embedding, image_col, out_folder, filename):
     ax.axis("equal")
     ax.set_axis_off()
 
+    # instead of points on scatterplot, plot paintings instead
     if image_col == 'grey_image':
         def getImage(img):
             return OffsetImage(np.array(img), zoom=.02, cmap='gray') # need to change color map if plotting greyscale; matplotlib defaults 1-channel images to different cmap otherwise..
@@ -658,12 +766,24 @@ def pca_icons(ax, df, ds, embedding, image_col, out_folder, filename):
         ab = AnnotationBbox(getImage(ds[index][image_col]), (row["PCA1"], row["PCA2"]), frameon=False)
         ax.add_artist(ab)
 
-    plt.savefig(os.path.join(out_folder, filename), format='eps', dpi=1200)
+    if filename:
+        plt.savefig(os.path.join('results', 'figs', filename), format='eps', dpi=1200)
 
     np.seterr(divide='ignore', invalid='ignore')
 
-def umap_plot(ax, df, ds, embedding, filename, n_components=50):
+def umap_plot(ax:plt.Axes, df:pd.DataFrame, ds:Dataset, embedding:str, filename:str, n_components:int = 50):
 
+    '''
+    Plot all paintings with UMAP
+    
+    Parameters:
+        - ax: Plt axes to plot on
+        - df: Dataframe with embeddings
+        - ds: Dataset with color images
+        - embedding: name of embedding col in df
+        - filename: Name to save the plot as
+        - n_components: Number of PCA components for initial dimensionality reduction
+    '''
     def getImage(img):
         return OffsetImage(np.array(img), zoom=.02)
 
@@ -673,11 +793,12 @@ def umap_plot(ax, df, ds, embedding, filename, n_components=50):
     pca = PCA(n_components=n_components)
     pca_results = pca.fit_transform(embeddings_array)
 
+    # fit UMAP on PCA-reduced data
     X = np.array(pca_results)
     umap_fitted = UMAP(n_components=2, random_state=42).fit_transform(X)
     df_umap = pd.DataFrame(umap_fitted, columns=["umap1", "umap2"])
     
-    ax.scatter(df_umap['umap1'], df_umap['umap2'], color='white')
+    ax.scatter(df_umap['umap1'], df_umap['umap2'], color='white') # make invisible
 
     ax.set_xlabel("")
     ax.set_ylabel("")
@@ -690,12 +811,35 @@ def umap_plot(ax, df, ds, embedding, filename, n_components=50):
         ab = AnnotationBbox(getImage(ds[index]['image']), (row["umap1"], row["umap2"]), frameon=False)
         ax.add_artist(ab)
 
-    plt.savefig(os.path.join('testy', filename), format='eps', dpi=1200)
+    plt.savefig(os.path.join('results', 'figs', filename), format='eps', dpi=1200)
 
     np.seterr(divide='ignore', invalid='ignore')
 
-def plot_pca_comparison(df,ds,start_period=(1750, 1780),end_period=(1781, 1810), embedding_type='embedding', canon_filter='all', title=None, save_path=None):
+def plot_pca_comparison(df: pd.DataFrame,
+                        ds: Dataset,
+                        start_period: tuple = (1750, 1780),
+                        end_period: tuple = (1781, 1810),
+                        embedding_type: str = 'embedding',
+                        canon_filter: str = 'all',
+                        title: str = None,
+                        filename: str = None):
+    
+    '''
+    Generate PCA plots for two time periods.
 
+    Parameters: 
+        - df: Dataframe with SMK data
+        - ds: HuggingFace dataset with images
+        - start_period: First period to plot PCA for
+        - end_period: Second period to plot PCA for
+        - embedding_type: Name of embedding col
+        - canon_filter: Filter value for 'exb_canon' column ('all', 'canon' or 'other')
+        - title: Title on plot
+        - filename: Name of output file
+
+    '''
+
+    # filter data based on chosen periods and canon_filter
     def filter_data(dataframe, year_range, canon):
         subset = dataframe.query(f'start_year >= {year_range[0]} and start_year <= {year_range[1]}')
         if canon != 'all':
@@ -706,15 +850,16 @@ def plot_pca_comparison(df,ds,start_period=(1750, 1780),end_period=(1781, 1810),
     df1, ds1 = filter_data(df, start_period, canon_filter)
     df2, ds2 = filter_data(df, end_period, canon_filter)
 
+    # plot the two PCA's next to each other
     fig, axs = plt.subplots(1, 2, figsize=(20, 10))
-    pca_icons(axs[0], df1, ds1, embedding_type, 'image', 'figs', 'trash1.pdf')
-    pca_icons(axs[1], df2, ds2, embedding_type, 'image', 'figs', 'trash2.pdf')
+    pca_icons(axs[0], df1, ds1, embedding_type, 'image', None)
+    pca_icons(axs[1], df2, ds2, embedding_type, 'image', None)
 
     if title:
         fig.suptitle(title, fontsize=15)
 
-    if save_path:
-        plt.savefig(os.path.join('testy', save_path), bbox_inches='tight', format='pdf', dpi=1200)
+    if filename:
+        plt.savefig(os.path.join('results', 'figs', filename), bbox_inches='tight', format='pdf', dpi=1200)
 
 def dataset_visualizations(canon_cols, df, ds, color_subset, ds_color):
     
@@ -725,14 +870,13 @@ def dataset_visualizations(canon_cols, df, ds, color_subset, ds_color):
        create_stacked_freqplot(df = df, 
                                ax = axs[idx], 
                                canon_col = col, 
-                               w_size = 30, 
                                year_col = 'start_year')
        if idx != 0:
            axs[idx].set_ylabel('')   # Remove Y label for all columns except for first
            axs[idx].legend().remove()
     
     plt.tight_layout()
-    plt.savefig(os.path.join('testy', 'canon_frequency.pdf'), format='pdf', dpi=300)
+    plt.savefig(os.path.join('results', 'figs', 'canon_frequency.pdf'), format='pdf', dpi=300)
     
     ################## plot PCA with painting icons #################
 
@@ -744,52 +888,36 @@ def dataset_visualizations(canon_cols, df, ds, color_subset, ds_color):
               ds_color, 
               'embedding', 
               'image', 
-              'testy', 
               'pca_paitings_color.eps')
-
-    # add column wiht greyscaled images
-    grey_images = []
-
-    feature = Image_ds(decode=False)
-
-    for i in tqdm(range(len(ds))):
-        image = ds[i]['image']
-        image_grayscale = image.convert('L')
-        image_encoded = feature.encode_example(image_grayscale) # in order to add an image to a HF dataset column, the image needs to be encoded properly
-        grey_images.append(image_encoded)
-
-    ds = ds.add_column('grey_image', grey_images)
-    ds = ds.cast_column('grey_image', Image_ds(decode=True))
 
     pca_icons(axs, 
               df, 
               ds, 
               'grey_embedding', 
-              'grey_image', 
-              'testy', 
+              'grey_image',  
               'pca_paitings_grey.eps')
 
     plot_pca_comparison(color_subset,
                         ds_color, 
                         canon_filter='all', 
-                        save_path='pca_innovation_total.pdf')
+                        filename='pca_innovation_total.pdf')
 
     plot_pca_comparison(color_subset,
                         ds_color, 
                         canon_filter='canon', 
-                        save_path='pca_innovation_canon.pdf')
+                        filename='pca_innovation_canon.pdf')
     
     plot_pca_comparison(color_subset,
                         ds_color, 
                         canon_filter='other', 
-                        save_path='pca_innovation_non_canon.pdf')
+                        filename='pca_innovation_non_canon.pdf')
     
     ################## plot and save color UMAP ##################
     fig, axs = plt.subplots(1, 1, figsize=(20, 15))
     print('Creating UMAP plot...')
     umap_plot(axs, color_subset, ds_color, 'embedding', 'umap_n50_color.eps')
 
-def print_classification_results(canon_cols, models, sampling_methods, df, embedding_col, col_or_grey, out_folder):
+def print_classification_results(canon_cols, models, sampling_methods, df, embedding_col, col_or_grey):
 
     table = BeautifulTable()
     table.columns.header = ["unbalanced_logistic", "balanced_logistic", "unbalanced_mlp", "balanced_mlp"]
@@ -820,7 +948,7 @@ def print_classification_results(canon_cols, models, sampling_methods, df, embed
     print(table)
 
     # save classification report
-    out_file = os.path.join(out_folder, f'{col_or_grey}_classification_report.txt')
+    out_file = os.path.join('results', 'classification', f'{col_or_grey}_classification_report.txt')
 
     with open(out_file, 'w') as file:
                 file.write(str(table))

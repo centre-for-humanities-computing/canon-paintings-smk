@@ -1,8 +1,10 @@
 data/
 env/
-figs/
+old_figs/
 nbs/check_content.ipynb
 nbs/exhibitions.ipynb
 nbs/define_canon.ipynb
 nbs/new_figs_test.ipynb
 testy/
+**/*.eps
+trash/
