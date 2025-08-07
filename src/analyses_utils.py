@@ -39,10 +39,12 @@ from sklearn.linear_model import LogisticRegression
 from beautifultable import BeautifulTable
 from matplotlib.offsetbox import OffsetImage, AnnotationBbox
 from umap import UMAP
+import cv2 
+from PIL import Image
 
 #sys.path.append(os.path.abspath(".."))
-from .utils import WindowedRollingDistance
-from .utils import calc_vector_histogram
+from src.utils import WindowedRollingDistance
+from src.utils import calc_vector_histogram
 from scipy.ndimage import gaussian_filter1d
 
 # we get a lot of annoying warnings from sklearn so we suppress them
@@ -483,67 +485,7 @@ def plot_grid(df, color_subset, canon_cols, w_size, cosim_to_plot, title, savefi
 
     if savefig:
             plt.savefig(filename, format='pdf', bbox_inches='tight')
-    
-##################### ENTROPY / CHANGE DETECTION ##################################
 
-def calc_signals(df, w_size, embedding_col, year_col):
-    '''
-    Calculate novelty, transience and resonance signals from image embeddings
-    '''
-    # convert embedding to array
-    X = np.array(df[embedding_col])
-
-    # convert array to probability distributions and back to array
-    X_prob = [calc_vector_histogram(vect, bins=256) for vect in X]
-    X_prob = np.array(X_prob)
-
-    # calculate signal
-    w_main = WindowedRollingDistance(
-        measure='jensenshannon',
-        window_size=w_size,
-        estimate_error=True)
-
-    signal = w_main.fit_transform(X_prob)
-
-    # convert to dataframe
-    signal_df = pd.DataFrame(signal)
-
-    # add information about production year
-    signal_df['year'] = df[year_col]
-
-    return signal_df
-
-def plot_canon_novelty(df, canon_noncanon, canon_col, embedding_col, w_size, year_col, col_or_grey, ax):
-    
-    # define canon df based on chosen canon variable
-
-    if canon_noncanon == 'total':
-        df_canon = df
-
-    elif canon_noncanon == 'non_canon':
-        df_canon = df[df[canon_col] == 'other']
-
-    else:
-        df_canon = df[df[canon_col] == 'canon']
-
-    # sort by start year, lowest to highest
-    df_canon_sorted = df_canon.sort_values(by=year_col).reset_index(drop=True)
-
-    # calculate novelty and resonance signals (windowed rolling distance function
-    signal_df = calc_signals(df_canon_sorted, w_size, embedding_col, year_col)
-
-    # exclude the first w_size rows as they are empty
-    n_df = signal_df.iloc[w_size:, :]
-    n_hat = n_df['N_hat'].tolist() # get novelty signal
-    n_years = n_df['year'].tolist() # get year
-
-    # plot raw novelty signal as well as smoothed signal with a gaussian filter
-    ax.plot(n_years, n_hat, alpha=0.5)
-    ax.plot(n_years, gaussian_filter1d(n_hat, 5), label='Novelty (Gaussian filter, sigma = 5)', color='blue')
-    ax.set_ylabel(f'Average windowed Jensen-Shannon Distance (w={w_size})')
-    ax.set_xlabel(year_col)
-    ax.set_title(f'{canon_col}, {col_or_grey}, w_size = {w_size}')
-    ax.legend(loc='upper right')
 
 ##################### SUPERVISED CLASSIFICATION ##################################
 def run_classification(df, embedding_col, canon_col, classifier, resample, sample_before, cv, random_state):
@@ -613,176 +555,79 @@ def run_classification(df, embedding_col, canon_col, classifier, resample, sampl
 
 
 ##################### FUNCTIONS TO GATHER ALL OF THESE // PLOT EVERYTHING ##################################
-def all_analyses_plots(df, color_subset, canon_cols, plot_suffix, plot_folder, inter_intra_w, novelty_w):
 
-    # PCA plots
-    fig, axs = plt.subplots(2, len(canon_cols), figsize=(15, 10))
+def analysis_plots(df, color_subset, w_size, canon_cols):
 
-    for idx, col in enumerate(canon_cols):
+    ################# plot pca_binary, greyscale and color embeddings #################
+    fig, axs = plt.subplots(1, 2, figsize=(10, 5))
 
-        pca_binary(ax = axs[0,idx], 
-                   df = color_subset, 
-                   embedding = 'embedding', 
-                   canon_category = col, 
-                   title = f"{col}, colored")
-        
-        pca_binary(ax = axs[1, idx], 
-            df = df, 
-            embedding = 'grey_embedding', 
-            canon_category = col, 
-            title = f"{col}, greyscale")
-
-    fig.suptitle('PCA by canon category', size = 15, y=0.95)
-    plt.savefig(os.path.join(plot_folder, f'PCA_{plot_suffix}.pdf'), format='pdf', dpi=300)
-
-    # intra-group, canon, non-canon and total data
-
-    # total data
-    fig, axs = plt.subplots(1, 2, figsize=(12, 5))
-
-    plot_diachronic_change(w_size = inter_intra_w, 
+    pca_binary(ax = axs[0], 
                 df = color_subset, 
-                canon_col = 'exb_canon', 
-                embedding_col = 'embedding', 
-                cosim_to_plot = 'TOTAL_COSIM_MEAN', 
-                ax = axs[0])
-
-    plot_diachronic_change(w_size = inter_intra_w, 
-            df = df, 
-            canon_col = 'exb_canon', 
-            embedding_col = 'grey_embedding', 
-            cosim_to_plot = 'TOTAL_COSIM_MEAN', 
-            ax = axs[1])
+                embedding = 'embedding', 
+                canon_category = 'exb_canon', 
+                title = "Exhibition canon (color)")
     
-    fig.suptitle(f'Intra-group analysis for total data, w_size = {inter_intra_w}', size = 15, y=0.97)
-    plt.savefig(os.path.join(plot_folder, f'intra_total_w{inter_intra_w}_{plot_suffix}.pdf'), format='pdf', dpi=300)
+    pca_binary(ax = axs[1], 
+        df = df, 
+        embedding = 'grey_embedding', 
+        canon_category = 'exb_canon', 
+        title = "Exhibition canon (greyscale)")
+    
+    plt.savefig(os.path.join('figs', f'PCA_exb_only.pdf'), format='pdf', dpi=300)
 
-    # intra, canon
+    ################# plot inter/intra group plots #################
 
+        # canon
     plot_grid(df = df,
-               color_subset=color_subset, 
-               canon_cols = canon_cols,
-                w_size= inter_intra_w, 
-                cosim_to_plot='CANON_COSIM_MEAN', 
-                title='Intra-group analysis for all canon variables', 
-                savefig=True,
-                filename=os.path.join(plot_folder, f'intra_canon_w{inter_intra_w}_{plot_suffix}.pdf'))
-    
-    # intra, non-canon
-    plot_grid(df = df, 
-              color_subset = color_subset, 
-              canon_cols = canon_cols,
-            w_size= inter_intra_w, 
-            cosim_to_plot='NONCANON_COSIM_MEAN', 
-            title='Intra-group analysis for all non-canon',
+           color_subset=color_subset, 
+            canon_cols = canon_cols,
+            w_size= 30, 
+            cosim_to_plot='CANON_COSIM_MEAN', 
+            title='', 
             savefig=True,
-            filename=os.path.join(plot_folder, f'intra_noncanon_w{inter_intra_w}_{plot_suffix}.pdf'))
+            filename=os.path.join('figs', f'intra_canon_w30.pdf'))
 
-    # inter-group
+        # intra, non-canon
+    plot_grid(df = df, 
+            color_subset = color_subset, 
+            canon_cols = canon_cols,
+            w_size= 30, 
+            cosim_to_plot='NONCANON_COSIM_MEAN', 
+            title='',
+            savefig=True,
+            filename=os.path.join('figs', f'intra_noncanon_w30.pdf'))
+    
+        # inter-group
     plot_grid(df = df, 
               color_subset = color_subset, 
               canon_cols = canon_cols,
-                w_size= inter_intra_w, 
-                cosim_to_plot='CANON_NONCANON_COSIM', 
-                title='Inter-group analysis for all canon variables',
-                savefig=True,
-                filename=os.path.join(plot_folder, f'inter_w{inter_intra_w}_{plot_suffix}.pdf'))
-
-    # NOVELTY // ENTROPY PLOTS
-
-    # total data
-    fig, axs = plt.subplots(1, 2, figsize=(12, 5))
-    plot_canon_novelty(df, 'total', 'Total data', 'embedding', novelty_w, 'start_year', 'greyscale', axs[0])
-    plot_canon_novelty(color_subset, 'total', 'Total data', 'embedding', novelty_w, 'start_year', 'colored', axs[1])
-    fig.suptitle('Novelty signal for total data with mean embedding per year (all data)', size = 13, y=0.97)
-    plt.savefig(os.path.join(plot_folder, f'novelty_w=mean_embed_year_w{novelty_w}_{plot_suffix}.pdf'), format='pdf', dpi=300)
-
-    # canon data
-    fig, axs = plt.subplots(2, 3, figsize=(15, 10))
-
-    for idx, col in enumerate(canon_cols):
-        plot_canon_novelty(df = color_subset, 
-                           canon_noncanon = 'canon',
-                            canon_col = col, 
-                            embedding_col = 'embedding', 
-                            w_size = novelty_w, 
-                            year_col = 'start_year', 
-                            col_or_grey = 'colored', 
-                            ax = axs[0, idx])
-
-        plot_canon_novelty(df = df,
-                           canon_noncanon = 'canon',
-                            canon_col = col,
-                            embedding_col = 'grey_embedding', 
-                            w_size = novelty_w,
-                            year_col = 'start_year', 
-                            col_or_grey= 'greyscale', 
-                            ax = axs[1, idx])
-
-    fig.suptitle(f'Novelty signal for all canon variables, w_size = {novelty_w}', size = 20, y=0.97)
-    plt.savefig(os.path.join(plot_folder, f'novelty_w=mean_embed_year_canon_w{novelty_w}_{plot_suffix}.pdf'), format='pdf', dpi=300)
+              w_size= 30, 
+              cosim_to_plot='CANON_NONCANON_COSIM', 
+              title='',
+              savefig=True,
+              filename=os.path.join('figs', f'inter_w30.pdf'))
     
-    # non-canon data
+        # plot total non-canon data
+    fig, axs = plt.subplots(1, 2, figsize=(12, 5))
+    
+    plot_diachronic_change(w_size = 30, 
+                           df = color_subset, 
+                           canon_col = 'total_canons', 
+                           embedding_col = 'embedding', 
+                           cosim_to_plot = 'NONCANON_COSIM_MEAN', 
+                           ax = axs[0])
+    
+    plot_diachronic_change(w_size = 30, 
+                           df = df, 
+                           canon_col = 'total_canons', 
+                           embedding_col = 'grey_embedding', 
+                           cosim_to_plot = 'NONCANON_COSIM_MEAN', 
+                           ax = axs[1])
+    
+    # remove y label from second plot
+    axs[1].set_ylabel("")
 
-    fig, axs = plt.subplots(2, 3, figsize=(15, 10))
-    for idx, col in enumerate(canon_cols):
-        plot_canon_novelty(df = color_subset, 
-                           canon_noncanon = 'non_canon',
-                            canon_col = col, 
-                            embedding_col = 'embedding', 
-                            w_size = novelty_w, 
-                            year_col = 'start_year', 
-                            col_or_grey = 'colored', 
-                            ax = axs[0, idx])
-
-        plot_canon_novelty(df = df,
-                           canon_noncanon = 'non_canon',
-                            canon_col = col,
-                            embedding_col = 'grey_embedding', 
-                            w_size = novelty_w,
-                            year_col = 'start_year', 
-                            col_or_grey= 'greyscale', 
-                            ax = axs[1, idx])
-
-    fig.suptitle(f'Novelty signal for all non-canon, w_size = {novelty_w}', size = 20, y=0.97)
-    plt.savefig(os.path.join(plot_folder, f'novelty_w=mean_embed_year_noncanon_w{novelty_w}_{plot_suffix}.pdf'), format='pdf', dpi=300)
-
-def print_classification_results(canon_cols, models, sampling_methods, df, embedding_col, col_or_grey, report_suffix, out_folder):
-
-    table = BeautifulTable()
-    table.columns.header = ["unbalanced_logistic", "balanced_logistic", "unbalanced_mlp", "balanced_mlp"]
-    table.rows.header = canon_cols
-
-    for idx, col in enumerate(canon_cols):
-
-        results_list = []
-        
-        for model in models:
-
-            for sampling in sampling_methods:
-
-                result = run_classification(df=df, 
-                                            embedding_col = embedding_col, 
-                                            canon_col = col, 
-                                            classifier = model, 
-                                            resample=sampling, 
-                                            sample_before=False, 
-                                            cv=True, 
-                                            random_state=100)
-                
-                results_list.append(result)
-
-        table.rows[idx] = results_list
-
-    print(f"CLASSIFICATION RESULTS, {col_or_grey} (MEAN 10-FOLD CV MACRO F1 SCORES):")
-    print(table)
-
-    # save classification report
-    out_file = os.path.join(out_folder, f'{col_or_grey}_classification_report_{report_suffix}.txt')
-
-    with open(out_file, 'w') as file:
-                file.write(str(table))
-        
+    plt.savefig(os.path.join('figs', f'total_noncanon_w30.pdf'), format='pdf', dpi=300)
 
 def pca_icons(ax, df, ds, embedding, image_col, out_folder, filename):
     embeddings_array = np.array(df[embedding].to_list(), dtype=np.float32)
@@ -845,38 +690,9 @@ def umap_plot(ax, df, ds, embedding, filename, n_components=50):
         ab = AnnotationBbox(getImage(ds[index]['image']), (row["umap1"], row["umap2"]), frameon=False)
         ax.add_artist(ab)
 
-    plt.savefig(os.path.join('figs', filename), format='eps', dpi=1200)
+    plt.savefig(os.path.join('testy', filename), format='eps', dpi=1200)
 
     np.seterr(divide='ignore', invalid='ignore')
-
-def plot_exb_venues(df, filename):
-
-    counts = df['exhibition_venues'].explode().value_counts().head(20)
-    counts = counts.rename(index={'Sølvgade': 'Statens Museum for Kunst'})
-
-    plt.figure(figsize=(11, 11))
-
-    ax = counts.plot(kind='barh', color='#4c72b0')
-    ax.invert_yaxis()
-
-    ax.set_xlabel('Count', labelpad=10)
-    ax.set_ylabel('')
-
-    ax.bar_label(ax.containers[0], label_type='edge', padding=3, fontsize=12)
-
-        # Format spines and ticks
-    for spine in ax.spines.values():
-        spine.set_linewidth(1.5)
-    
-    ax.tick_params(axis='both', which='major', length=4, width=1)
-
-    # Add subtle gridlines
-    ax.grid(axis='x', linestyle='--', alpha=0.5)
-
-    # Clean layout
-    plt.tight_layout()
-    plt.savefig(os.path.join('figs', filename), format='pdf', dpi=300)
-
 
 def plot_pca_comparison(df,ds,start_period=(1750, 1780),end_period=(1781, 1810), embedding_type='embedding', canon_filter='all', title=None, save_path=None):
 
@@ -898,6 +714,114 @@ def plot_pca_comparison(df,ds,start_period=(1750, 1780),end_period=(1781, 1810),
         fig.suptitle(title, fontsize=15)
 
     if save_path:
-        plt.savefig(os.path.join('figs', save_path), bbox_inches='tight', format='pdf', dpi=1200)
+        plt.savefig(os.path.join('testy', save_path), bbox_inches='tight', format='pdf', dpi=1200)
 
-    #plt.show()
+def dataset_visualizations(canon_cols, df, ds, color_subset, ds_color):
+    
+    ################# plot canon/painting frequency #################
+    fig, axs = plt.subplots(1, 3, figsize=(18, 6))
+
+    for idx, col in enumerate(canon_cols):
+       create_stacked_freqplot(df = df, 
+                               ax = axs[idx], 
+                               canon_col = col, 
+                               w_size = 30, 
+                               year_col = 'start_year')
+       if idx != 0:
+           axs[idx].set_ylabel('')   # Remove Y label for all columns except for first
+           axs[idx].legend().remove()
+    
+    plt.tight_layout()
+    plt.savefig(os.path.join('testy', 'canon_frequency.pdf'), format='pdf', dpi=300)
+    
+    ################## plot PCA with painting icons #################
+
+    fig, axs = plt.subplots(1, 1, figsize=(30, 20))
+
+    print('Creating PCA plots....')
+    pca_icons(axs, 
+              color_subset, 
+              ds_color, 
+              'embedding', 
+              'image', 
+              'testy', 
+              'pca_paitings_color.eps')
+
+    # add column wiht greyscaled images
+    grey_images = []
+
+    feature = Image_ds(decode=False)
+
+    for i in tqdm(range(len(ds))):
+        image = ds[i]['image']
+        image_grayscale = image.convert('L')
+        image_encoded = feature.encode_example(image_grayscale) # in order to add an image to a HF dataset column, the image needs to be encoded properly
+        grey_images.append(image_encoded)
+
+    ds = ds.add_column('grey_image', grey_images)
+    ds = ds.cast_column('grey_image', Image_ds(decode=True))
+
+    pca_icons(axs, 
+              df, 
+              ds, 
+              'grey_embedding', 
+              'grey_image', 
+              'testy', 
+              'pca_paitings_grey.eps')
+
+    plot_pca_comparison(color_subset,
+                        ds_color, 
+                        canon_filter='all', 
+                        save_path='pca_innovation_total.pdf')
+
+    plot_pca_comparison(color_subset,
+                        ds_color, 
+                        canon_filter='canon', 
+                        save_path='pca_innovation_canon.pdf')
+    
+    plot_pca_comparison(color_subset,
+                        ds_color, 
+                        canon_filter='other', 
+                        save_path='pca_innovation_non_canon.pdf')
+    
+    ################## plot and save color UMAP ##################
+    fig, axs = plt.subplots(1, 1, figsize=(20, 15))
+    print('Creating UMAP plot...')
+    umap_plot(axs, color_subset, ds_color, 'embedding', 'umap_n50_color.eps')
+
+def print_classification_results(canon_cols, models, sampling_methods, df, embedding_col, col_or_grey, out_folder):
+
+    table = BeautifulTable()
+    table.columns.header = ["unbalanced_logistic", "balanced_logistic", "unbalanced_mlp", "balanced_mlp"]
+    table.rows.header = canon_cols
+
+    for idx, col in enumerate(canon_cols):
+
+        results_list = []
+        
+        for model in models:
+
+            for sampling in sampling_methods:
+
+                result = run_classification(df=df, 
+                                            embedding_col = embedding_col, 
+                                            canon_col = col, 
+                                            classifier = model, 
+                                            resample=sampling, 
+                                            sample_before=False, 
+                                            cv=True, 
+                                            random_state=100)
+                
+                results_list.append(result)
+
+        table.rows[idx] = results_list
+
+    print(f"CLASSIFICATION RESULTS, {col_or_grey} (MEAN 10-FOLD CV MACRO F1 SCORES):")
+    print(table)
+
+    # save classification report
+    out_file = os.path.join(out_folder, f'{col_or_grey}_classification_report.txt')
+
+    with open(out_file, 'w') as file:
+                file.write(str(table))
+

@@ -20,8 +20,8 @@ def main():
     # load from disk
     ds = datasets.load_from_disk(os.path.join('data', args['dataset']))
 
-    # push to my (Louise) HuggingFace Hub
-    ds.push_to_hub(f"louisebrix/{args['hub_name']}")
+    # push to CHC HuggingFace Hub
+    ds.push_to_hub(f"chcaa/{args['hub_name']}")
 
 if __name__ == '__main__':
    main()

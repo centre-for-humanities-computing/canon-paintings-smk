@@ -593,5 +593,62 @@ def plot_dendrogram(df, col_to_color, col_to_label, embedding_col, l, h, palette
     plt.tight_layout()
     plt.show()
 
+def plot_bar_dendrogram(df, col_to_color, embedding_col, l, h, title):
+    
+    # define colors for 'other' and 'canon' category
+    color_dict = {'other': '#129525', 'canon': '#356177'}
+
+    # map colors to canon variable
+    col_colors = df[col_to_color].map(color_dict).to_numpy()
+
+    # Prepare embeddings and distances
+    embeddings_matrix = np.stack(df[embedding_col].values)
+    cosine_dist_matrix = cosine_distances(embeddings_matrix)
+
+    if cosine_dist_matrix.shape[0] != cosine_dist_matrix.shape[1]:
+        raise ValueError("Distance matrix is not square.")
+
+    # calculate linkage matrix for hiearchical clustering of painting embeddings
+    Z = linkage(cosine_dist_matrix, method='ward')
+
+    # create dendrogram
+    # we are using seaborn to plot the colors as a bar
+    # seaborn does however plot their dendrograms vertically, so we need to transpose the matrix and color by columns to plot horizontally 
+    sns.set_theme(color_codes=True)
+
+    g = sns.clustermap(
+        embeddings_matrix.T, # transpose matrix so it's now (dimensions, paintings)
+        col_colors=col_colors, # color by columns (i.e., canon category for painting)
+        row_cluster=False,               
+        col_linkage=Z, # use custom linkage matrix
+        dendrogram_ratio=(0.01, 0.9), 
+        colors_ratio=0.04,
+        figsize=(l, h)
+    )
+
+    # remove heatmap (it's just a binary variable so not much information here)
+    g.ax_heatmap.remove()
+    g.cax.remove()
+
+    # add legend
+    handles = [Patch(color=color_dict[key], label=key) for key in color_dict]
+    g.ax_col_dendrogram.legend(
+        handles=handles,
+        loc = 'upper right',
+        fontsize = '10',
+        facecolor = 'none', # remove grey background from legend box
+        title= 'Canon label'
+    )
+
+    # adjust layot of plot
+    plt.subplots_adjust(top=0.98, bottom=0.15, left=0.05, right=0.95, hspace=0.05)
+
+    # axes are a bit messed up so I'm just adding a y axis manually using a text box
+    g.fig.text(0.02, 0.6, "Cosine Distance", va='center', rotation='vertical', fontsize=12)
+    
+    # add title
+    g.fig.suptitle(title, y=1, fontsize=16)
+
+    plt.show()
 
 
