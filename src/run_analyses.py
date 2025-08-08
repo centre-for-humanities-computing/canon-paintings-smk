@@ -2,7 +2,7 @@ import argparse
 import os
 import datasets
 import matplotlib.pyplot as plt
-from src.analyses_utils import analysis_plots, dataset_visualizations, print_classification_results
+from src.analyses_utils import analysis_plots, dataset_visualizations, save_classification_results
 import pandas as pd
 
 def argument_parser():
@@ -37,12 +37,12 @@ def main():
 
     if args['plot']:
 
-        print('Creating plots...')
+        print('Creating plots....')
 
-        #analysis_plots(df=df, 
-                   # color_subset = color_subset, 
-                  #  w_size = 30, 
-                   # canon_cols= canon_cols)
+        analysis_plots(df=df, 
+                       color_subset = color_subset, 
+                       w_size = 30, 
+                       canon_cols= canon_cols)
         
         dataset_visualizations(canon_cols = canon_cols, 
                                df = df, 
@@ -52,23 +52,23 @@ def main():
 
     if args['classification']:
 
-        print('Running classifiers...')
+        print('Running classifiers....')
 
         models = ['logistic', 'mlp']
         sampling_methods = [False, True]
 
         # run for both greyscale and color data
-        print_classification_results(canon_cols=canon_cols, 
+        save_classification_results(canon_cols=canon_cols, 
                                      models=models, 
                                      sampling_methods=sampling_methods, 
                                      df=df, 
                                      embedding_col='grey_embedding', 
                                      col_or_grey='greyscale')
 
-        print_classification_results(canon_cols=canon_cols, 
+        save_classification_results(canon_cols=canon_cols, 
                                      models=models, 
                                      sampling_methods=sampling_methods, 
-                                     df=df, 
+                                     df=color_subset, 
                                      embedding_col='embedding', 
                                      col_or_grey='color')
 

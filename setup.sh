@@ -7,7 +7,10 @@ source ./env/bin/activate
 # install requirements
 pip install -r requirements.txt
 
-# explicitly install ipykernel
+# umap-learn causes a lot of pain with dependency issues, fix by installing independently with no set package version here
+pip install umap-learn
+
+# explicitly install ipykernel as well
 pip install ipykernel
 
 # install kernel so env can be used in jupyter notebooks

@@ -4,13 +4,8 @@ import pandas as pd
 import numpy as np
 import datasets
 from tqdm import tqdm
-from datasets import Image as Image_ds # change name because of similar PIL module
 from datasets import Dataset
 from datasets import load_dataset
-import urllib.parse
-import json
-import pickle
-import requests
 import matplotlib.pyplot as plt 
 from sklearn.neighbors import NearestNeighbors
 from sklearn.decomposition import PCA

@@ -1,61 +1,48 @@
 '''
 Util functions for analyses of canonicity in SMK dataset
 '''
-# load relevant modules
-from PIL import Image
+
+# standard libraries
 import os
+import warnings
+from collections import Counter
+from random import sample
+
+# data handling & stats
 import pandas as pd
 import numpy as np
-import datasets
 from tqdm import tqdm
-from datasets import Image as Image_ds # change name because of similar PIL module
-from datasets import Dataset
-from datasets import load_dataset
-import urllib.parse
-import json
-import pickle
-import requests
-import matplotlib.pyplot as plt 
-from sklearn.neighbors import NearestNeighbors
-import re
-import sys
-from sklearn.metrics.pairwise import cosine_similarity
-from sklearn.decomposition import PCA
-from matplotlib.patches import Patch
-from random import sample
-from scipy.cluster.hierarchy import linkage, dendrogram
-from matplotlib.patches import Patch
-from sklearn.metrics.pairwise import cosine_distances
-import seaborn as sns
 from scipy.stats import spearmanr
-from sklearn.utils import resample
-from sklearn.metrics import classification_report
-from sklearn.neural_network import MLPClassifier
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import classification_report
-from sklearn.model_selection import cross_validate, cross_val_score
-from imblearn.under_sampling import RandomUnderSampler
-from collections import Counter
-from imblearn.pipeline import Pipeline, make_pipeline
-from sklearn.linear_model import LogisticRegression
-from beautifultable import BeautifulTable
+
+# visualization tools
+import matplotlib.pyplot as plt
+from matplotlib.patches import Patch
 from matplotlib.offsetbox import OffsetImage, AnnotationBbox
 from umap import UMAP
-import cv2 
-from PIL import Image
+from beautifultable import BeautifulTable
 
-from src.utils import WindowedRollingDistance
-from src.utils import calc_vector_histogram
-from scipy.ndimage import gaussian_filter1d
+# image processing
+#from PIL import Image
+
+# ML
+from sklearn.decomposition import PCA
+from sklearn.metrics.pairwise import cosine_similarity
+from sklearn.linear_model import LogisticRegression
+from sklearn.neural_network import MLPClassifier
+from sklearn.model_selection import train_test_split, cross_val_score
+from sklearn.utils import resample
+from sklearn.metrics import classification_report
+from imblearn.under_sampling import RandomUnderSampler
+from imblearn.pipeline import make_pipeline
+
+# HuggingFace
+from datasets import Dataset
 
 # we get a lot of annoying warnings from sklearn so we suppress them
 import warnings
 warnings.filterwarnings('ignore')
 
-# type hints
-from typing import List, Tuple, Dict, Any
-
-# default params
+# default plt params
 plt.rcParams.update({
     'figure.dpi': 300,
     'savefig.dpi': 300,
@@ -640,6 +627,57 @@ def run_classification(df:pd.DataFrame, embedding_col:str, canon_col:str, classi
             print(classification_report(y_test, y_pred))
             return
 
+def save_classification_results(canon_cols:list, models:list, sampling_methods:list, df:pd.DataFrame, embedding_col:str, col_or_grey:str):
+
+    '''
+    Run classification models classifying canon vs non-canon and save/print results
+
+    Parameters:
+        - canon_cols: List of names of relevant columns with canon variables in dataframe
+        - models: List of classification models to run classification with
+        - sampling_methods: List of bools of whether to resample data or not
+        - df: DataFrame with smk paintings data
+        - embedding_col: Name of embedding column to use
+        - col_or_grey: Whether color or greyscale data is used
+    
+    '''
+
+    # create table for printing results
+    table = BeautifulTable()
+    table.columns.header = ["unbalanced_logistic", "balanced_logistic", "unbalanced_mlp", "balanced_mlp"]
+    table.rows.header = canon_cols
+
+    # run classification for each canon column, specified model and sampling method
+    for idx, col in enumerate(canon_cols):
+
+        results_list = []
+        
+        for model in models:
+
+            for sampling in sampling_methods:
+
+                result = run_classification(df=df, 
+                                            embedding_col = embedding_col, 
+                                            canon_col = col, 
+                                            classifier = model, 
+                                            resample=sampling, 
+                                            sample_before=False, 
+                                            cv=True, 
+                                            random_state=100)
+                
+                results_list.append(result)
+
+        table.rows[idx] = results_list
+
+    # print results and save to results folder
+    print(f"CLASSIFICATION RESULTS, {col_or_grey} (MEAN 10-FOLD CV MACRO F1 SCORES):")
+    print(table)
+
+    # save classification report
+    out_file = os.path.join('results', 'classification', f'{col_or_grey}_classification_report.txt')
+
+    with open(out_file, 'w') as file:
+                file.write(str(table))
 
 ################################## FUNCTIONS TO GATHER ALL OF THESE // PLOT EVERYTHING ##################################
 
@@ -771,7 +809,7 @@ def pca_icons(ax:plt.Axes, df:pd.DataFrame, ds: Dataset, embedding:str, image_co
 
     np.seterr(divide='ignore', invalid='ignore')
 
-def umap_plot(ax:plt.Axes, df:pd.DataFrame, ds:Dataset, embedding:str, filename:str, n_components:int = 50):
+def umap_plot(ax:plt.Axes, df:pd.DataFrame, ds:Dataset, embedding:str, n_components:int = 50):
 
     '''
     Plot all paintings with UMAP
@@ -811,7 +849,7 @@ def umap_plot(ax:plt.Axes, df:pd.DataFrame, ds:Dataset, embedding:str, filename:
         ab = AnnotationBbox(getImage(ds[index]['image']), (row["umap1"], row["umap2"]), frameon=False)
         ax.add_artist(ab)
 
-    plt.savefig(os.path.join('results', 'figs', filename), format='eps', dpi=1200)
+    plt.savefig(os.path.join('results', 'figs', f'umap_n{n_components}.eps'), format='eps', dpi=1200)
 
     np.seterr(divide='ignore', invalid='ignore')
 
@@ -861,9 +899,20 @@ def plot_pca_comparison(df: pd.DataFrame,
     if filename:
         plt.savefig(os.path.join('results', 'figs', filename), bbox_inches='tight', format='pdf', dpi=1200)
 
-def dataset_visualizations(canon_cols, df, ds, color_subset, ds_color):
+def dataset_visualizations(canon_cols:list, df:pd.DataFrame, ds:Dataset, color_subset:pd.DataFrame, ds_color:Dataset):
     
-    ################# plot canon/painting frequency #################
+    '''
+    Gather all functions for creating visualizations of the paintings dataset
+
+    Parameters: 
+        - canon_cols: List of names of relevant columns with canon variables in dataframe
+        - df: DataFrame with paintings data
+        - ds: HuggingFace dataset with images
+        - color_subset: Subset of dataframe with color-only images
+        - ds_color: Subset of dataset with color-only images
+
+    '''
+    # plot and save canon/painting frequency
     fig, axs = plt.subplots(1, 3, figsize=(18, 6))
 
     for idx, col in enumerate(canon_cols):
@@ -878,17 +927,18 @@ def dataset_visualizations(canon_cols, df, ds, color_subset, ds_color):
     plt.tight_layout()
     plt.savefig(os.path.join('results', 'figs', 'canon_frequency.pdf'), format='pdf', dpi=300)
     
-    ################## plot PCA with painting icons #################
+    # plot and save PCAs with painting icons 
 
     fig, axs = plt.subplots(1, 1, figsize=(30, 20))
 
     print('Creating PCA plots....')
+
     pca_icons(axs, 
               color_subset, 
               ds_color, 
               'embedding', 
               'image', 
-              'pca_paitings_color.eps')
+              'pca_paitings_color.eps') # saving to .eps ensures good quality but creates really large files, so output files are added to .ignore
 
     pca_icons(axs, 
               df, 
@@ -912,44 +962,8 @@ def dataset_visualizations(canon_cols, df, ds, color_subset, ds_color):
                         canon_filter='other', 
                         filename='pca_innovation_non_canon.pdf')
     
-    ################## plot and save color UMAP ##################
+    # plot and save color UMAP
     fig, axs = plt.subplots(1, 1, figsize=(20, 15))
     print('Creating UMAP plot...')
-    umap_plot(axs, color_subset, ds_color, 'embedding', 'umap_n50_color.eps')
-
-def print_classification_results(canon_cols, models, sampling_methods, df, embedding_col, col_or_grey):
-
-    table = BeautifulTable()
-    table.columns.header = ["unbalanced_logistic", "balanced_logistic", "unbalanced_mlp", "balanced_mlp"]
-    table.rows.header = canon_cols
-
-    for idx, col in enumerate(canon_cols):
-
-        results_list = []
-        
-        for model in models:
-
-            for sampling in sampling_methods:
-
-                result = run_classification(df=df, 
-                                            embedding_col = embedding_col, 
-                                            canon_col = col, 
-                                            classifier = model, 
-                                            resample=sampling, 
-                                            sample_before=False, 
-                                            cv=True, 
-                                            random_state=100)
-                
-                results_list.append(result)
-
-        table.rows[idx] = results_list
-
-    print(f"CLASSIFICATION RESULTS, {col_or_grey} (MEAN 10-FOLD CV MACRO F1 SCORES):")
-    print(table)
-
-    # save classification report
-    out_file = os.path.join('results', 'classification', f'{col_or_grey}_classification_report.txt')
-
-    with open(out_file, 'w') as file:
-                file.write(str(table))
+    umap_plot(axs, color_subset, ds_color, 'embedding')
 

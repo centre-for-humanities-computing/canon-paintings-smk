@@ -7,11 +7,13 @@ import timm
 import torch
 import datasets
 from datasets import load_dataset
+from datasets import Dataset
 from tqdm import tqdm
 import cv2 
 import numpy as np
 from PIL import Image
 import argparse
+from typing import Any
 
 def argument_parser():
 
@@ -23,7 +25,19 @@ def argument_parser():
     
     return args
 
-def transform_and_extract(img, model):
+def transform_and_extract(img:Image.Image, model:Any):
+
+    '''
+    Preprocess image and extract feature
+
+    Parameters:
+        - img: PIL image
+        - model: Pretrained timm model
+    
+    Returns: 
+        - feature_list_unnest: Image Embedding
+
+    '''
 
     # extract information about transformations
     data_config = timm.data.resolve_model_data_config(model)
@@ -49,7 +63,17 @@ def transform_and_extract(img, model):
 
     return feature_list_unnest
 
-def features_from_dataset(dataset, model):
+def features_from_dataset(dataset:Dataset, model:Any):
+    '''
+    Get image embeddings of all images in a dataset
+
+    Parameters:
+        - dataset: HuggingFace dataset with 'image' column
+        - model: Pretrained timm model
+
+    Returns:
+        - embeddings: list of embeddings for all images
+    '''
 
     # initialize empty list
     embeddings = []
