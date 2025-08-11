@@ -26,39 +26,34 @@ Full datafolder is not available here due to size limits but can be made availab
 
 ### Code
 
-- ```nbs/create_canon_data.ipynb``` contains code to create the final datafile used for the analysis
-- ```src/analyses_utils.py``` and ```src/run_analyses.py``` contains the code to run the full analysis on the canon-paintings data. The scripts are run with set arguments with ```run_analyses.sh``` and output is in the ```results/``` folder
-- ```nbs/canon_analysis.ipynb``` runs the same functions as ```src/run_analyses.py``` but with added, descriptive markdown chunks and the option to run each step of the analysis seperately.
+- ```nbs/create_canon_data.ipynb``` contains code to define canon variables, clean the data and to create the final datafile used for the analysis
+- ```src/analyses_utils.py``` and ```src/run_analyses.py``` contains the code to run the full analysis on the canon-paintings data. The scripts can be run with set arguments with ```run_analyses.sh``` and output is in the ```results/``` folder
+- ```nbs/canon_analysis.ipynb``` runs the same functions as ```src/run_analyses.py``` but in a notebook style with added, descriptive markdown chunks and the option to run each step of the analysis seperately.
 - ```src/greyscale_embeddings.py``` and ```src/smk_embeddings.py``` contains the code to extract colored and greyscaled embeddings for the dataset of paintings. These are already in the dataset uploaded to [HuggingFace](https://huggingface.co/datasets/louisebrix/smk_canon_paintings).
 
-## Structure
+## Project Structure
 
 ```
 canon-paintings-smk/
 │
-├── figs/                         # Visualizations for the article
-│   ├── ...
-│   ├── ...
-│   └── ...
+├── nbs/                         # Jupyter Notebooks
+│   ├── canon_analysis.ipynb # code to analyses in notebook instead for script
+│   └── create_canon_data.ipynb # contruct canon variables and clean up data
 │
-├── nbs/                          # Jupyter Notebooks
-│   ├── 01_data_preparation.ipynb
-│   ├── 02_model_training.ipynb
-│   ├── 03_evaluation.ipynb
-│   └── ...
+├── results/                      # Output of analysis
+│   ├── classification/           # Classification reports from supervised classification
+│   └── figs/                     # Output visualizations      
 │
 ├── src/                          # Source code and helper functions
-│   ├── __init__.py
-│   ├── data_loader.py
-│   ├── model_utils.py
-│   ├── analysis_pipeline.py
-│   └── ...
+│   ├── analyses_utils.py         # Helper functions to run canon analyses
+│   ├── greyscale_embeddings.py.  # Extracts greyscaled image embeddings
+│   ├── run_analyses.py           # Run full canon analysis
+│   ├── smk_embeddings.py         # Extract colored image embeddings
+│   └── utils.py                  # Miscellaneous helper functions
 │
-├── run_analyses.sh               # Run all analyses
-├── setup.sh                      # Set up virtual environment
-├── requirements.txt              # Python dependencies
-├── upload_data_to_hub.sh         # Upload SMK dataset to Hugging Face Hub
 ├── README.md
-├── LICENSE
-└── CITATION.cff
+├── embeddings.sh                 # Extract colored and greyscaled embeddings from data
+├── requirements.txt              # Python dependencies
+├── run_analyses.sh               # Run canon analyses with set arguments
+└── setup.sh                      # Set up virtual environment and install required packages
 ```
