@@ -36,9 +36,9 @@ Full datafolder is not available here due to size limits but can be made availab
 ```
 canon-paintings-smk/
 │
-├── nbs/                         # Jupyter Notebooks
-│   ├── canon_analysis.ipynb # code to analyses in notebook instead for script
-│   └── create_canon_data.ipynb # contruct canon variables and clean up data
+├── nbs/                          # Jupyter Notebooks
+│   ├── canon_analysis.ipynb      # Code to analyses in notebook instead for script
+│   └── create_canon_data.ipynb   # Contruct canon variables and clean up data
 │
 ├── results/                      # Output of analysis
 │   ├── classification/           # Classification reports from supervised classification
