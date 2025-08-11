@@ -4,7 +4,7 @@ python3 -m venv env
 # activate env
 source ./env/bin/activate
 
-# install requirements
+# install required packages
 pip install -r requirements.txt
 
 # umap-learn causes a lot of pain with dependency issues, fix by installing independently with no set package version here

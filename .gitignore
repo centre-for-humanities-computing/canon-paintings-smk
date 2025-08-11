@@ -9,3 +9,6 @@ nbs/canon_status_analysis.ipynb
 testy/
 **/*.eps
 trash/
+src/upload_to_hub.py
+upload_data_to_hub.sh
+
