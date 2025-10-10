@@ -22,8 +22,6 @@ add bibtex_formatted_ref
 
 Dataset with metadata, images and embeddings can be found on [HuggingFace](https://huggingface.co/datasets/louisebrix/smk_canon_paintings).
 
-Full datafolder is not available here due to size limits but can be made available upon request (it is necessary in order to run the full analysis pipeline).
-
 ### Code
 
 - ```nbs/create_canon_data.ipynb``` contains code to define canon variables, clean the data and to create the final datafile used for the analysis
