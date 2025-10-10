@@ -61,7 +61,7 @@ plt.rcParams.update({
 
 ################################## PCA ##################################
 
-def pca_binary(ax, df, embedding, canon_category, title):
+def pca_binary(ax: plt.Axes, df:pd.DataFrame, embedding:str, canon_category:str, title:str) -> None:
 
     '''
     Create PCA scatterplot of painting embeddings for each canon category
@@ -74,7 +74,6 @@ def pca_binary(ax, df, embedding, canon_category, title):
     - title: Plot title
 
     '''
-    
     embeddings_array = np.array(df[embedding].to_list(), dtype=np.float32)
     
     color_mapping = {'other': '#129525', 'canon': '#75BCC6'}
@@ -587,7 +586,7 @@ def run_classification(df:pd.DataFrame, embedding_col:str, canon_col:str, classi
 
             if cv == True: 
                 scores = cross_val_score(clf, X, y, cv=10, scoring='f1_macro')
-                return round(scores.mean(), 3)
+                return round(scores.mean(), 3), round(scores.std(), 3)
             
             else: # if resample == True and sample_before == True, but no cv
                 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.20, random_state=random_state, stratify=y)
@@ -604,7 +603,7 @@ def run_classification(df:pd.DataFrame, embedding_col:str, canon_col:str, classi
         
                 cross_vals = cross_val_score(imba_pipeline, X, y, scoring='f1_macro', cv=10)
 
-                return round(cross_vals.mean(), 3)
+                return round(cross_vals.mean(), 3), round(cross_vals.std(), 3)
             
             else: # no cross validation
                 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.20, random_state=random_state, stratify=y)
@@ -618,7 +617,7 @@ def run_classification(df:pd.DataFrame, embedding_col:str, canon_col:str, classi
     else: # no resampling
         if cv == True:
             scores = cross_val_score(clf, X, y, cv=10, scoring='f1_macro')
-            return round(scores.mean(), 3)
+            return round(scores.mean(), 3), round(scores.std(), 3)
         
         else: # no resampling and no cross validation
             X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.20, random_state=random_state, stratify=y) #?
