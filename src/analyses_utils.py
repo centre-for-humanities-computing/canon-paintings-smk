@@ -29,7 +29,7 @@ from sklearn.decomposition import PCA
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.linear_model import LogisticRegression
 from sklearn.neural_network import MLPClassifier
-from sklearn.model_selection import train_test_split, cross_val_score
+from sklearn.model_selection import train_test_split, cross_val_score, StratifiedKFold
 from sklearn.utils import resample
 from sklearn.metrics import classification_report
 from imblearn.under_sampling import RandomUnderSampler
@@ -542,7 +542,7 @@ def create_stacked_freqplot(df:pd.DataFrame, ax:plt.Axes, canon_col:str, year_co
     ax.margins(x=0)
 
 ################################## SUPERVISED CLASSIFICATION ##################################
-def run_classification(df:pd.DataFrame, embedding_col:str, canon_col:str, classifier:str, resample:bool, sample_before:bool, cv:bool, random_state:int):
+def run_classification(df:pd.DataFrame, embedding_col:str, canon_col:str, classifier:str, resample:bool, cv:bool, random_state:int):
     
     '''
     Run a supervised classification of canon/non-canon with optional sampling and cross validation steps.
@@ -553,12 +553,11 @@ def run_classification(df:pd.DataFrame, embedding_col:str, canon_col:str, classi
         - canon_col: Name of canon column variable to use
         - classifier: Whether to use 'mlp' or 'logistic' classifier
         - resample: Resample data or not
-        - sample_before: Sample before splitting in train/test or after (only used for experiments)
         - cv: Whether to cross validate or not
         - random_state: Set random state for reproducibility
 
     Returns:
-        - Mean cross-validation score if cv=True; otherwise None
+        - Mean and SD cross-validation score if cv=True; otherwise None
     
     '''
 
@@ -579,54 +578,50 @@ def run_classification(df:pd.DataFrame, embedding_col:str, canon_col:str, classi
         clf = LogisticRegression(random_state=random_state)
 
     if resample == True:
-        if sample_before == True:
-            rus = RandomUnderSampler(random_state=random_state) # initiate undersampler
-            X, y = rus.fit_resample(X, y) # fit on data
-            print(sorted(Counter(y).items()))
-
-            if cv == True: 
-                scores = cross_val_score(clf, X, y, cv=10, scoring='f1_macro')
-                return round(scores.mean(), 3), round(scores.std(), 3)
-            
-            else: # if resample == True and sample_before == True, but no cv
-                X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.20, random_state=random_state, stratify=y)
-                clf.fit(X_train, y_train)
-                y_pred = clf.predict(X_test)
-                print(classification_report(y_test, y_pred))
-                return 
-
-        else: # resampling, but sample after splitting
+        # resample data
             if cv == True:
 
-                # initiate pipeline from imbalanced-learn to apply sampling with corss validation
-                imba_pipeline = make_pipeline(RandomUnderSampler(random_state=random_state), clf)
-        
-                cross_vals = cross_val_score(imba_pipeline, X, y, scoring='f1_macro', cv=10)
+                # specify cross validation
+                cv_methods = StratifiedKFold(n_splits=10, shuffle=True, random_state=random_state)
 
-                return round(cross_vals.mean(), 3), round(cross_vals.std(), 3)
+                # initiate pipeline from imbalanced-learn to apply sampling with cross validation
+                imba_pipeline = make_pipeline(RandomUnderSampler(random_state=random_state), clf)
+                scores = cross_val_score(imba_pipeline, X, y, scoring='f1_macro', cv=cv_methods)
+
+                return f"Mean: {float(round(scores.mean(), 3))}, SD: {float(round(scores.std(), 3))}"
             
             else: # no cross validation
                 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.20, random_state=random_state, stratify=y)
                 rus = RandomUnderSampler(random_state=random_state)
+
+                # we only resample train data to avoid leakage to test data
                 X_train_resampled, y_train_resampled = rus.fit_resample(X_train, y_train)
+
+                # fit classifier
                 clf.fit(X_train_resampled, y_train_resampled)
+
+                # predict on test data
                 y_pred = clf.predict(X_test)
                 print(classification_report(y_test, y_pred))
-                return 
+                return None
     
     else: # no resampling
         if cv == True:
-            scores = cross_val_score(clf, X, y, cv=10, scoring='f1_macro')
-            return round(scores.mean(), 3), round(scores.std(), 3)
+
+            # specify cross validation & run classifier across splits
+            cv_methods = StratifiedKFold(n_splits=10, shuffle=True, random_state=random_state)
+            scores = cross_val_score(clf, X, y, scoring='f1_macro', cv=cv_methods)
+
+            return f"Mean: {float(round(scores.mean(), 3))}", f"SD: {float(round(scores.std(), 3))}"
         
         else: # no resampling and no cross validation
-            X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.20, random_state=random_state, stratify=y) #?
+            X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.20, random_state=random_state, stratify=y)
             clf.fit(X_train, y_train)
             y_pred = clf.predict(X_test)
             print(classification_report(y_test, y_pred))
-            return
+            return None
 
-def save_classification_results(canon_cols:list, models:list, sampling_methods:list, df:pd.DataFrame, embedding_col:str, col_or_grey:str):
+def save_classification_results(canon_cols:list, models:list, sampling_methods:list, df:pd.DataFrame, embedding_col:str, col_or_grey:str, save_report:bool):
 
     '''
     Run classification models classifying canon vs non-canon and save/print results
@@ -638,6 +633,7 @@ def save_classification_results(canon_cols:list, models:list, sampling_methods:l
         - df: DataFrame with smk paintings data
         - embedding_col: Name of embedding column to use
         - col_or_grey: Whether color or greyscale data is used
+        - save_report: whether to save the classification report or just print it
     
     '''
 
@@ -660,7 +656,6 @@ def save_classification_results(canon_cols:list, models:list, sampling_methods:l
                                             canon_col = col, 
                                             classifier = model, 
                                             resample=sampling, 
-                                            sample_before=False, 
                                             cv=True, 
                                             random_state=100)
                 
@@ -669,15 +664,16 @@ def save_classification_results(canon_cols:list, models:list, sampling_methods:l
         table.rows[idx] = results_list
 
     # print results and save to results folder
-    print(f"CLASSIFICATION RESULTS, {col_or_grey} (MEAN 10-FOLD CV MACRO F1 SCORES):")
+    print(f"CLASSIFICATION RESULTS, {col_or_grey} (MEAN STRATIFIED 10-FOLD CV MACRO F1 SCORES):")
     print(table)
 
-    # save classification report
-    out_file = os.path.join('results', 'classification', f'{col_or_grey}_classification_report.txt')
+    if save_report == True:
+        # save classification report
+        out_file = os.path.join('results', 'classification', f'{col_or_grey}_classification_report.txt')
 
-    with open(out_file, 'w') as file:
+        with open(out_file, 'w') as file:
                 file.write(str(table))
-
+                
 ################################## FUNCTIONS TO GATHER ALL OF THESE // PLOT EVERYTHING ##################################
 
 def analysis_plots(df:pd.DataFrame, color_subset:pd.DataFrame, w_size:int, canon_cols:list):
