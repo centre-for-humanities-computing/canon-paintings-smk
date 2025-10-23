@@ -14,5 +14,5 @@ upload_data_to_hub.sh
 src/utils.py 
 src/paper_plots.py 
 nbs/create_canon_data.ipynb 
-embeddings.sh 
+embeddings.sh
 
