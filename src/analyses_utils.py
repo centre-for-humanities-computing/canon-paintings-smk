@@ -7,12 +7,14 @@ import os
 import warnings
 from collections import Counter
 from random import sample
+import requests
 
 # data handling & stats
 import pandas as pd
 import numpy as np
 from tqdm import tqdm
 from scipy.stats import spearmanr
+from datasets import Dataset
 
 # visualization tools
 import matplotlib.pyplot as plt
@@ -22,7 +24,8 @@ from umap import UMAP
 from beautifultable import BeautifulTable
 
 # image processing
-#from PIL import Image
+from PIL import Image
+from datasets import Image as Image_ds # change name because of similar PIL module
 
 # ML
 from sklearn.decomposition import PCA
@@ -34,9 +37,6 @@ from sklearn.utils import resample
 from sklearn.metrics import classification_report
 from imblearn.under_sampling import RandomUnderSampler
 from imblearn.pipeline import make_pipeline
-
-# HuggingFace
-from datasets import Dataset
 
 # we get a lot of annoying warnings from sklearn so we suppress them
 import warnings
@@ -787,6 +787,26 @@ def pca_icons(ax:plt.Axes, df:pd.DataFrame, ds: Dataset, embedding:str, image_co
 
     # instead of points on scatterplot, plot paintings instead
     if image_col == 'grey_image':
+
+        import cv2 
+
+        grey_images = []
+
+        feature = Image_ds(decode=False)
+
+        for i in tqdm(range(len(ds))):
+            image = ds[i]['image']
+            image_greyscale = image.convert('L')
+            image_encoded = feature.encode_example(image_greyscale) # in order to add an image to a HF dataset column, the image needs to be encoded properly
+            grey_images.append(image_encoded)
+
+        ds = ds.add_column('grey_image', grey_images)
+        ds = ds.cast_column('grey_image', Image_ds(decode=True))
+
+        # add encoded column to dataframe as well
+
+        df['grey_image'] = grey_images
+
         def getImage(img):
             return OffsetImage(np.array(img), zoom=.02, cmap='gray') # need to change color map if plotting greyscale; matplotlib defaults 1-channel images to different cmap otherwise..
     
@@ -962,3 +982,52 @@ def dataset_visualizations(canon_cols:list, df:pd.DataFrame, ds:Dataset, color_s
     print('Creating UMAP plot...')
     umap_plot(axs, color_subset, ds_color, 'embedding')
 
+
+################################## IMAGE DOWNLOADING ##################################
+
+def download_image(url:str):
+    '''
+    Download image from SMK thumbnail URL and encode it to a HuggingFace Image feature
+
+    Parameters:
+        - url: URL to image
+    
+    Returns:
+        Encoded image / pd.NA if download fails
+    '''
+    # create image feature to use for encoding
+    feature = Image_ds(decode=False) 
+
+    try:
+        img = Image.open(requests.get(url, stream=True).raw) # stream=True enables to download image in chunks and not all at once
+
+        # encode the PIL images to image feature
+        image_encoded = feature.encode_example(img)
+
+        return image_encoded
+
+    except Exception as e:
+        print(f"Error processing image: {e}")
+        return pd.NA
+
+def add_image_col(ds: Dataset, url_col:str):
+    '''
+    Download all images from thumbnails in a column and cast them to PIL format for HuggingFace dataset
+
+    Parameters:
+        - ds: HuggingFace dataset object containing column with image URLs
+        - url_col: name of column with Image URLs
+    
+    Returns:
+        - Dataset with decoded image column
+    '''
+    # download images from URLs
+    images = [download_image(url) for url in tqdm(ds[url_col], desc= 'Downloading images')]
+    
+    # add column to dataset
+    ds = ds.add_column('image', images)
+
+    # decode back to PIL format
+    ds = ds.cast_column('image', Image_ds(decode=True))
+
+    return ds

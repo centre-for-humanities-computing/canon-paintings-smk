@@ -1,16 +1,15 @@
 import argparse
 import os
 import datasets
+from datasets import load_dataset
 import matplotlib.pyplot as plt
-from src.analyses_utils import analysis_plots, dataset_visualizations, save_classification_results
+from src.analyses_utils import analysis_plots, dataset_visualizations, save_classification_results, add_image_col
 import pandas as pd
 
 def argument_parser():
 
     parser = argparse.ArgumentParser()
-
-    parser.add_argument('--df_name', type=str, help='name of pandas df in /data folder to use')
-    parser.add_argument('--ds_name', type=str, help='name of huggingface ds in /data folder to use')
+    parser.add_argument('--ds_name', type=str, help='name of dataset from HuggingFace hub')
     parser.add_argument('--plot', action=argparse.BooleanOptionalAction, help='whether to plot results or not', default=False)
     parser.add_argument('--classification', action=argparse.BooleanOptionalAction, help='whether to run classification or not', default=False)
 
@@ -22,9 +21,14 @@ def main():
 
     args = argument_parser()
 
-    # read df from pickle 
-    df = pd.read_pickle(os.path.join('data', args['df_name']))
-    ds = datasets.load_from_disk(os.path.join('data', args['ds_name'])) 
+    # load data
+    ds = load_dataset(args['ds_name'], split="train")
+
+    # download the images from SMK using the links from the 'image_thumbnail' column
+    ds = add_image_col(ds, 'image_thumbnail')
+    
+    # convert to pd dataframe
+    df = ds.to_pandas()
 
     # make subset of colored images only 
     color_subset = df.query('rgb == "color"')
@@ -63,14 +67,16 @@ def main():
                                      sampling_methods=sampling_methods, 
                                      df=df, 
                                      embedding_col='grey_embedding', 
-                                     col_or_grey='greyscale')
+                                     col_or_grey='greyscale',
+                                     save_report=False)
 
         save_classification_results(canon_cols=canon_cols, 
                                      models=models, 
                                      sampling_methods=sampling_methods, 
                                      df=color_subset, 
                                      embedding_col='embedding', 
-                                     col_or_grey='color')
+                                     col_or_grey='color',
+                                     save_report=False)
 
 if __name__ == '__main__':
    main()
