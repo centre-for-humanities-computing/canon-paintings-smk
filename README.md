@@ -24,7 +24,7 @@ It should be noted that SMK frequently updates their collection, meaning that th
 
 ### Code
 
-- ```src/analyses_utils.py``` and ```src/run_analyses.py``` contains the code to run the full analysis on the canon-paintings data. The scripts can be run with set arguments with ```run_analyses.sh``` and output is in the ```results/``` folder
+- ```src/analyses_utils.py``` and ```src/run_analyses.py``` contain the code to run the full analysis on the canon-paintings data. The scripts can be run with set arguments with ```run_analyses.sh``` and output is in the ```results/``` folder
 - ```nbs/canon_analysis.ipynb``` runs the same functions as ```src/run_analyses.py``` but in a notebook style with added, descriptive markdown chunks and the option to run each step of the analysis seperately.
 - ```src/greyscale_embeddings.py``` and ```src/smk_embeddings.py``` contains the code to extract colored and greyscaled embeddings for the dataset of paintings. These are already in the dataset uploaded to [HuggingFace](https://huggingface.co/datasets/louisebrix/smk_canon_paintings).
 
@@ -59,8 +59,7 @@ canon-paintings-smk/
 │   ├── analyses_utils.py         # Helper functions to run canon analyses
 │   ├── greyscale_embeddings.py.  # Extracts greyscaled image embeddings
 │   ├── run_analyses.py           # Run full canon analysis
-│   ├── smk_embeddings.py         # Extract colored image embeddings
-│   └── utils.py                  # Miscellaneous helper functions
+│   └── smk_embeddings.py         # Extract colored image embeddings
 │
 ├── README.md
 ├── requirements.txt              # Python dependencies
