@@ -238,14 +238,11 @@ def get_all_cosims(df:pd.DataFrame, year_col:str, canon_col:str, year_range:list
     canon_mean = groups['canon'][embedding_col].mean(axis=0)
     non_canon_mean = groups['non_canon'][embedding_col].mean(axis=0)
 
-   # _, inter_CI = calc_bootstrap_CI_inter(groups, embedding_col, 1000)
-
     temp = {} 
 
     # get the mean cosine similarity between mean canon embedding and mean non-canon embedding for this time window (inter-group)
     canon_noncanon_similarity = cosine_similarity(np.stack([non_canon_mean, canon_mean]))[0][1]
     temp['CANON_NONCANON_COSIM'] = canon_noncanon_similarity
-    #temp['CANON_NONCANON_COSIM_CI'] = inter_CI
 
     # get mean cosine similarity of canon embeddings for this time window + confidence interval
     canon_mean, canon_CI = get_cosim_mean_std(groups, embedding_col, 'canon')
@@ -579,31 +576,31 @@ def run_classification(df:pd.DataFrame, embedding_col:str, canon_col:str, classi
 
     if resample == True:
         # resample data
-            if cv == True:
+        if cv == True:
 
-                # specify cross validation
-                cv_methods = StratifiedKFold(n_splits=10, shuffle=True, random_state=random_state)
+            # specify cross validation
+            cv_methods = StratifiedKFold(n_splits=10, shuffle=True, random_state=random_state)
 
-                # initiate pipeline from imbalanced-learn to apply sampling with cross validation
-                imba_pipeline = make_pipeline(RandomUnderSampler(random_state=random_state), clf)
-                scores = cross_val_score(imba_pipeline, X, y, scoring='f1_macro', cv=cv_methods)
+            # initiate pipeline from imbalanced-learn to apply sampling with cross validation
+            imba_pipeline = make_pipeline(RandomUnderSampler(random_state=random_state), clf)
+            scores = cross_val_score(imba_pipeline, X, y, scoring='f1_macro', cv=cv_methods)
 
-                return f"Mean: {float(round(scores.mean(), 3))}, SD: {float(round(scores.std(), 3))}"
-            
-            else: # no cross validation
-                X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.20, random_state=random_state, stratify=y)
-                rus = RandomUnderSampler(random_state=random_state)
+            return f"Mean: {float(round(scores.mean(), 3))}, SD: {float(round(scores.std(), 3))}"
+        
+        else: # no cross validation
+            X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.20, random_state=random_state, stratify=y)
+            rus = RandomUnderSampler(random_state=random_state)
 
-                # we only resample train data to avoid leakage to test data
-                X_train_resampled, y_train_resampled = rus.fit_resample(X_train, y_train)
+            # we only resample train data to avoid leakage to test data
+            X_train_resampled, y_train_resampled = rus.fit_resample(X_train, y_train)
 
-                # fit classifier
-                clf.fit(X_train_resampled, y_train_resampled)
+            # fit classifier
+            clf.fit(X_train_resampled, y_train_resampled)
 
-                # predict on test data
-                y_pred = clf.predict(X_test)
-                print(classification_report(y_test, y_pred))
-                return None
+            # predict on test data
+            y_pred = clf.predict(X_test)
+            print(classification_report(y_test, y_pred))
+            return None
     
     else: # no resampling
         if cv == True:
