@@ -11,7 +11,7 @@ This repository contains the code to reproduce results from our paper:
 Please cite our paper if you use the code or the embeddings: 
 
 ```
-Citations will be added upon publication.
+Citation instructions will be added upon publication
 
 ```
 
@@ -31,12 +31,12 @@ It should be noted that SMK frequently updates their collection, meaning that th
 #### Running the code
 All code was run using macOS 15.6.1 in Visual Studio Code with Python 3.13.3.
 
-Set up the virtual environment and install required packages with 
+To run the code, first set up the virtual environment and install required packages with: 
 ```
 bash setup.sh
 ```
 
-Next, run analysis with default arguments with
+Next, run analysis with default arguments with:
 ```
 bash run_analyses.sh 
 ```
