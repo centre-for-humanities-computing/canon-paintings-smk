@@ -609,7 +609,7 @@ def run_classification(df:pd.DataFrame, embedding_col:str, canon_col:str, classi
             cv_methods = StratifiedKFold(n_splits=10, shuffle=True, random_state=random_state)
             scores = cross_val_score(clf, X, y, scoring='f1_macro', cv=cv_methods)
 
-            return f"Mean: {float(round(scores.mean(), 3))}", f"SD: {float(round(scores.std(), 3))}"
+            return f"Mean: {float(round(scores.mean(), 3))}, SD: {float(round(scores.std(), 3))}"
         
         else: # no resampling and no cross validation
             X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.20, random_state=random_state, stratify=y)
