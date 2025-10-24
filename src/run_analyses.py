@@ -68,7 +68,7 @@ def main():
                                      df=df, 
                                      embedding_col='grey_embedding', 
                                      col_or_grey='greyscale',
-                                     save_report=False)
+                                     save_report=True)
 
         save_classification_results(canon_cols=canon_cols, 
                                      models=models, 
@@ -76,7 +76,7 @@ def main():
                                      df=color_subset, 
                                      embedding_col='embedding', 
                                      col_or_grey='color',
-                                     save_report=False)
+                                     save_report=True)
 
 if __name__ == '__main__':
    main()
