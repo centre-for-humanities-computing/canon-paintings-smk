@@ -11,7 +11,16 @@ This repository contains the code to reproduce results from our paper:
 Please cite our paper if you use the code or the embeddings: 
 
 ```
-Citation instructions will be added upon publication
+@article{10.63744@KTLpQIY247dD,
+  title = {Framing the Canon: A Computational Study of Canonicity in Danish Golden Age Paintings (1750-1870)},
+  author = {Louise Brix Pilegaard Hansen and Rie Schmidt Eriksen and Pascale Feldkamp and Alie Lassche and Kristoffer Nielbo and Katrine Baunvig and Yuri Bizzoni},
+  year = {2025},
+  journal = {Anthology of Computers and the Humanities},
+  volume = {3},
+  pages = {339--356},
+  editor = {Taylor Arnold, Margherita Fantoli, and Ruben Ros},
+  doi = {10.63744/KTLpQIY247dD}
+}
 
 ```
 
@@ -57,7 +66,7 @@ canon-paintings-smk/
 │
 ├── src/                          # Source code and helper functions
 │   ├── analyses_utils.py         # Helper functions to run canon analyses
-│   ├── greyscale_embeddings.py.  # Extracts greyscaled image embeddings
+│   ├── greyscale_embeddings.py   # Extracts greyscaled image embeddings
 │   ├── run_analyses.py           # Run full canon analysis
 │   └── smk_embeddings.py         # Extract colored image embeddings
 │
