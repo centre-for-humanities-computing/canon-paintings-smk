@@ -11,7 +11,7 @@ This repository contains the code to reproduce results from our paper:
 Please cite our paper if you use the code or the embeddings: 
 
 ```
-@article{10.63744@KTLpQIY247dD,
+@article{hansen_framing_2025,
   title = {Framing the Canon: A Computational Study of Canonicity in Danish Golden Age Paintings (1750-1870)},
   author = {Louise Brix Pilegaard Hansen and Rie Schmidt Eriksen and Pascale Feldkamp and Alie Lassche and Kristoffer Nielbo and Katrine Baunvig and Yuri Bizzoni},
   year = {2025},
